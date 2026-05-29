@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -8,46 +9,50 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Kullanıcı profili bilgilerini Supabase profiles tablosundan getirir
-  const fetchProfile = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
-      if (error) {
-        console.error("Profil yüklenirken hata:", error.message);
+  // Profili arka planda çeker — hiçbir zaman auth akışını bloke etmez
+  const fetchProfile = (userId) => {
+    // await yok — fire and forget, arka planda çalışır
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Profil yüklenemedi:", error.message);
+          setProfile(null);
+        } else {
+          setProfile(data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Profil fetch hatası:", err.message);
         setProfile(null);
-      } else {
-        setProfile(data);
-      }
-    } catch (err) {
-      console.error("Profil çekme hatası:", err);
-      setProfile(null);
-    }
+      });
   };
 
   useEffect(() => {
-    // Aktif oturumu al
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+    let mounted = true;
+
+    // Mevcut oturumu kontrol et
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
         setUser(session.user);
-        await fetchProfile(session.user.id);
+        fetchProfile(session.user.id);
       }
       setLoading(false);
-    };
+    }).catch(() => {
+      if (mounted) setLoading(false);
+    });
 
-    getSession();
-
-    // Oturum değişikliklerini dinle (Sign in, sign out vb.)
+    // Oturum değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session) {
+      (event, session) => {
+        if (!mounted) return;
+        if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          fetchProfile(session.user.id); // await yok, bloke etmez
         } else {
           setUser(null);
           setProfile(null);
@@ -57,11 +62,12 @@ export const AuthProvider = ({ children }) => {
     );
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
-  // Giriş yapma fonksiyonu
+  // Giriş yapma — sadece auth, profil arka planda gelir
   const signIn = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -71,14 +77,16 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  // Çıkış yapma fonksiyonu
+  // Çıkış yapma
   const signOut = async () => {
+    setUser(null);
+    setProfile(null);
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
-  // Üye olma fonksiyonu (Metadataya rol eklenerek tetikleyici çalıştırılır)
-  const signUp = async (email, password, fullName, role = "student") => {
+  // Kayıt olma
+  const signUp = async (email, password, fullName, role = "student", universityId = null) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -86,6 +94,7 @@ export const AuthProvider = ({ children }) => {
         data: {
           full_name: fullName,
           role: role,
+          university_id: universityId,
         },
       },
     });

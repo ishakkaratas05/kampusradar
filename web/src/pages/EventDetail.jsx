@@ -1,9 +1,74 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon } from "lucide-react";
+import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon, Bookmark } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabaseClient";
 
 export default function EventDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [isSaved, setIsSaved] = useState(false);
+  const [checkingSave, setCheckingSave] = useState(true);
+
+  // Favori Durumunu Kontrol Et
+  useEffect(() => {
+    async function checkIsSaved() {
+      if (!user) {
+        setCheckingSave(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("saved_events")
+          .select("id")
+          .eq("student_id", user.id)
+          .eq("event_id", id)
+          .maybeSingle();
+
+        if (error) throw error;
+        setIsSaved(!!data);
+      } catch (err) {
+        console.error("Favori durumu kontrol hatası:", err.message);
+      } finally {
+        setCheckingSave(false);
+      }
+    }
+    checkIsSaved();
+  }, [user, id]);
+
+  const handleToggleSave = async () => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+
+    try {
+      if (isSaved) {
+        const { error } = await supabase
+          .from("saved_events")
+          .delete()
+          .eq("student_id", user.id)
+          .eq("event_id", id);
+        
+        if (error) throw error;
+        setIsSaved(false);
+      } else {
+        const { error } = await supabase
+          .from("saved_events")
+          .insert({
+            student_id: user.id,
+            event_id: id
+          });
+        
+        if (error) throw error;
+        setIsSaved(true);
+      }
+    } catch (err) {
+      console.error("Favori islemi hatasi:", err.message);
+    }
+  };
 
   const event = {
     id: id,
@@ -21,13 +86,22 @@ export default function EventDetail() {
     <div className="min-h-screen bg-gray-50 pb-10">
       
       {/* Üst Bar */}
-      <div className="sticky top-0 z-10 bg-white px-4 py-4 shadow-sm">
+      <div className="sticky top-0 z-10 bg-white px-4 py-4 shadow-sm flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 cursor-pointer"
         >
           <ArrowLeft className="h-5 w-5" />
           Geri Dön
+        </button>
+        <button
+          type="button"
+          onClick={handleToggleSave}
+          disabled={checkingSave}
+          className="flex items-center gap-1.5 text-sm font-bold text-slate-800 hover:text-slate-950 cursor-pointer disabled:opacity-50"
+        >
+          <Bookmark className={`h-5 w-5 ${isSaved ? "fill-slate-900 text-slate-900" : ""}`} />
+          {isSaved ? "Kaydedildi" : "Kaydet"}
         </button>
       </div>
 

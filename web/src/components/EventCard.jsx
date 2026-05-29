@@ -1,18 +1,41 @@
-import { MapPin, Users, School } from "lucide-react"; 
+import { MapPin, Users, School, Bookmark } from "lucide-react"; 
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-export default function EventCard({ event }) {
+export default function EventCard({ event, isSaved = false, onToggleSave = null }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const handleSaveClick = (e) => {
+    e.stopPropagation();
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (onToggleSave) {
+      onToggleSave(event.id);
+    }
+  };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md relative">
       
       {/* Kategori ve Tarih */}
       <div className="mb-3 flex items-start justify-between">
         <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 uppercase tracking-wider">
           {event.category}
         </span>
-        <span className="text-sm font-medium text-gray-500">{event.date}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-500">{event.date}</span>
+          <button 
+            type="button"
+            onClick={handleSaveClick}
+            className="text-gray-400 hover:text-slate-950 transition cursor-pointer p-1 rounded-full hover:bg-slate-50 flex items-center justify-center"
+            title={isSaved ? "Kaydedilenlerden Çıkar" : "Etkinliği Kaydet"}
+          >
+            <Bookmark className={`h-5 w-5 ${isSaved ? "fill-slate-900 text-slate-900" : ""}`} />
+          </button>
+        </div>
       </div>
       
       {/* Başlık */}
