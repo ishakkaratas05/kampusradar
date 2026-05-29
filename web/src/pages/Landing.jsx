@@ -1,36 +1,33 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import UniversityCard from "../components/UniversityCard";
 
 export default function Landing() {
   const navigate = useNavigate();
+  const [universities, setUniversities] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const universities = [
-    { 
-      id: 1, 
-      name: "Gazi Üniversitesi", 
-      abbreviation: "GAZİ",
-      city: "Ankara", 
-      founded: "1926", 
-      history: "Gazi Mustafa Kemal Atatürk'ün talimatıyla 'Orta Muallim Mektebi' olarak kurulmuştur. Cumhuriyetin en köklü eğitim kurumlarından biridir." 
-    },
-    { 
-      id: 2, 
-      name: "Orta Doğu Teknik Üniversitesi", 
-      abbreviation: "ODTÜ",
-      city: "Ankara", 
-      founded: "1956", 
-      history: "Türkiye ve Orta Doğu ülkelerinin kalkınmalarına katkıda bulunmak, özellikle fen ve sosyal bilimler alanlarında eleman yetiştirmek amacıyla kurulmuştur." 
-    },
-    { 
-      id: 3, 
-      name: "İstanbul Teknik Üniversitesi", 
-      abbreviation: "İTÜ",
-      city: "İstanbul", 
-      founded: "1773", 
-      history: "Mühendishane-i Bahr-i Hümayun adıyla kurulan İTÜ, dünyanın en eski teknik üniversitelerinden biridir ve mühendislik eğitiminin beşiğidir." 
+  useEffect(() => {
+    async function fetchUniversities() {
+      try {
+        const { data, error } = await supabase
+          .from("universities")
+          .select("*")
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+        setUniversities(data || []);
+      } catch (err) {
+        console.error("Üniversiteler yüklenirken hata oluştu:", err.message);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+    fetchUniversities();
+  }, []);
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -94,12 +91,37 @@ export default function Landing() {
           <p className="text-gray-500 mt-2 text-lg">KampusRadar ağına katılmış aktif kampüsler ve kısa tarihçeleri</p>
         </div>
 
-        {/* DEĞİŞİKLİK: Büyük ekranlarda yan yana 2 kart sığacak şekilde grid-cols-2 yaptık */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {universities.map((uni) => (
-            <UniversityCard key={uni.id} uni={uni} />
-          ))}
-        </div>
+        {/* Yüklenme ve Liste Durumları */}
+        {loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} className="flex flex-col sm:flex-row bg-white rounded-2xl border border-gray-100 p-5 gap-5 items-center sm:items-start w-full animate-pulse">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-200 rounded-xl shrink-0"></div>
+                <div className="flex-1 w-full space-y-3">
+                  <div className="h-6 bg-gray-200 rounded w-3/4 mx-auto sm:mx-0"></div>
+                  <div className="flex gap-2 justify-center sm:justify-start">
+                    <div className="h-5 bg-gray-200 rounded w-20"></div>
+                    <div className="h-5 bg-gray-200 rounded w-28"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : universities.length === 0 ? (
+          <div className="text-center py-10 bg-white rounded-2xl border border-gray-100 shadow-sm">
+            <p className="text-gray-500 font-medium">Henüz kayıtlı üniversite bulunmuyor.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {universities.map((uni) => (
+              <UniversityCard key={uni.id} uni={uni} />
+            ))}
+          </div>
+        )}
       </section>
 
     </div>
