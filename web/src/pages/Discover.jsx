@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal, Loader2, Calendar as CalendarIcon } from "lucide-react";
 import Navbar from "../components/Navbar";
 import EventCard from "../components/EventCard";
 import { useAuth } from "../context/AuthContext";
@@ -9,44 +9,76 @@ import { supabase } from "../lib/supabaseClient";
 export default function Discover() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  const [events, setEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [universities, setUniversities] = useState([]);
   const [savedEventIds, setSavedEventIds] = useState([]);
 
-  const discoverEvents = [
-    {
-      id: 4,
-      title: "Uluslararası Girişimcilik Zirvesi '26",
-      university: "ODTÜ",
-      organizer: "Girişimcilik Kulübü",
-      category: "Konferans",
-      date: "10 Haziran 2026 - 10:00",
-      location: "ODTÜ Kültür ve Kongre Merkezi",
-      description: "Dünyanın dört bir yanından gelen başarılı girişimciler hikayelerini ve tecrübelerini paylaşıyor."
-    },
-    {
-      id: 5,
-      title: "Robot Günleri Yarışması",
-      university: "İTÜ",
-      organizer: "Robotik Topluluğu",
-      category: "Yarışma",
-      date: "15 Haziran 2026 - 09:00",
-      location: "İTÜ Ayazağa Kampüsü SDKM",
-      description: "Çizgi izleyen, mini sumo ve insansız hava araçları kategorilerinde yüzlerce robot yarışıyor!"
-    },
-    {
-      id: 6,
-      title: "Açık Hava Sinema Gecesi",
-      university: "Yıldız Teknik Üniversitesi",
-      organizer: "Sinema Topluluğu",
-      category: "Sosyal",
-      date: "18 Haziran 2026 - 21:00",
-      location: "Yıldız Teknik Üniversitesi Davutpaşa Kampüsü",
-      description: "Yıldızların altında, çimlerin üzerinde patlamış mısır eşliğinde ödüllü bir film keyfi."
-    }
-  ];
+  // Arama & Filtre State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedUniId, setSelectedUniId] = useState("");
 
   const isUUID = (id) => {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
   };
+
+  // Üniversiteleri Yükle
+  useEffect(() => {
+    async function loadUniversities() {
+      try {
+        const { data, error } = await supabase
+          .from("universities")
+          .select("id, name")
+          .order("name", { ascending: true });
+        if (error) throw error;
+        setUniversities(data || []);
+      } catch (err) {
+        console.error("Üniversiteler yüklenirken hata:", err.message);
+      }
+    }
+    loadUniversities();
+  }, []);
+
+  // Tüm Onaylı Etkinlikleri Yükle
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        setLoadingEvents(true);
+        const { data, error } = await supabase
+          .from("events")
+          .select(`
+            *,
+            universities(name),
+            profiles:organizer_id(full_name)
+          `)
+          .eq("status", "approved")
+          .order("date", { ascending: true });
+
+        if (error) throw error;
+
+        const formatted = (data || []).map(ev => ({
+          id: ev.id,
+          title: ev.title,
+          description: ev.description,
+          category: ev.category,
+          date: ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          location: ev.location,
+          university: ev.universities?.name || "Bilinmeyen Üniversite",
+          universityId: ev.university_id,
+          organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
+          imageUrl: ev.image_url
+        }));
+
+        setEvents(formatted);
+      } catch (err) {
+        console.error("Etkinlikler yüklenirken hata:", err.message);
+      } finally {
+        setLoadingEvents(false);
+      }
+    }
+    loadEvents();
+  }, []);
 
   // Kaydedilen Etkinlik ID'lerini Yükle
   useEffect(() => {
@@ -125,6 +157,19 @@ export default function Discover() {
     }
   };
 
+  // Filtrelenmiş Etkinlikler listesi
+  const filteredEvents = events.filter(event => {
+    const matchesSearch = 
+      event.title?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
+      event.description?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
+      event.location?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
+      event.category?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR"));
+
+    const matchesUniversity = selectedUniId === "" || event.universityId === selectedUniId;
+
+    return matchesSearch && matchesUniversity;
+  });
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Navbar />
@@ -141,36 +186,49 @@ export default function Discover() {
             <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Etkinlik veya üniversite ara..."
               className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             />
           </div>
           
           <div className="flex gap-2">
-            <select className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-500">
+            <select 
+              value={selectedUniId}
+              onChange={(e) => setSelectedUniId(e.target.value)}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-500"
+            >
               <option value="">Tüm Üniversiteler</option>
-              <option value="odtü">ODTÜ</option>
-              <option value="itü">İTÜ</option>
-              <option value="ytü">YTÜ</option>
+              {universities.map(uni => (
+                <option key={uni.id} value={uni.id}>{uni.name}</option>
+              ))}
             </select>
-
-            <button className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 shadow-sm hover:bg-gray-50">
-              <SlidersHorizontal className="h-4 w-4" />
-              Filtrele
-            </button>
           </div>
         </div>
 
-        <div className="space-y-4">
-          {discoverEvents.map((event) => (
-            <EventCard 
-              key={event.id} 
-              event={event} 
-              isSaved={savedEventIds.includes(event.id)}
-              onToggleSave={handleToggleSave}
-            />
-          ))}
-        </div>
+        {loadingEvents ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 bg-white rounded-2xl border border-gray-150 shadow-sm">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+            <span className="text-sm font-medium">Keşif haritası yükleniyor...</span>
+          </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-150 shadow-sm">
+            <CalendarIcon className="h-10 w-10 mb-3 text-gray-300" />
+            <p className="text-sm font-medium">Eşleşen aktif bir etkinlik bulunamadı.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredEvents.map((event) => (
+              <EventCard 
+                key={event.id} 
+                event={event} 
+                isSaved={savedEventIds.includes(event.id)}
+                onToggleSave={handleToggleSave}
+              />
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

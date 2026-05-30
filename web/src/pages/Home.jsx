@@ -4,48 +4,61 @@ import EventCard from "../components/EventCard";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
+import { Loader2, Calendar } from "lucide-react";
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const [events, setEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(true);
   const [savedEventIds, setSavedEventIds] = useState([]);
-
-  const mockEvents = [
-    {
-      id: 1,
-      title: "Yapay Zeka ve Geleceğin Meslekleri",
-      university: "Gazi Üniversitesi",
-      organizer: "Yapay Zeka Öğrenci Topluluğu",
-      category: "Seminer",
-      date: "28 Mayıs 2026 - 14:00",
-      location: "Mühendislik Fakültesi Konferans Salonu",
-      description: "Sektörden uzmanların katılımıyla yapay zekanın iş dünyasına etkileri konuşulacak."
-    },
-    {
-      id: 2,
-      title: "Bahar Şenliği Açılış Konseri",
-      university: "Gazi Üniversitesi",
-      organizer: "Rektörlük",
-      category: "Şenlik",
-      date: "1 Haziran 2026 - 20:00",
-      location: "Kampüs Ana Meydan",
-      description: "Bahar şenlikleri harika bir konser ve sürpriz etkinliklerle başlıyor!"
-    },
-    {
-      id: 3,
-      title: "Girişimcilik Hackathonu",
-      university: "Gazi Üniversitesi",
-      organizer: "Fen Fakültesi Dekanlığı",
-      category: "Yarışma",
-      date: "5 Haziran 2026 - 09:00",
-      location: "Teknokent Kuluçka Merkezi",
-      description: "Fikrini koda dök, 48 saat sürecek maratonda büyük ödülü kazanma şansı yakala."
-    }
-  ];
 
   const isUUID = (id) => {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
   };
+
+  // Üniversite Etkinliklerini Yükle
+  useEffect(() => {
+    async function loadEvents() {
+      if (!profile?.university_id) return;
+      try {
+        setLoadingEvents(true);
+        const { data, error } = await supabase
+          .from("events")
+          .select(`
+            *,
+            universities(name),
+            profiles:organizer_id(full_name)
+          `)
+          .eq("university_id", profile.university_id)
+          .eq("status", "approved")
+          .order("date", { ascending: true });
+
+        if (error) throw error;
+
+        const formatted = (data || []).map(ev => ({
+          id: ev.id,
+          title: ev.title,
+          description: ev.description,
+          category: ev.category,
+          date: ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          location: ev.location,
+          university: ev.universities?.name || "Bilinmeyen Üniversite",
+          organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
+          imageUrl: ev.image_url
+        }));
+
+        setEvents(formatted);
+      } catch (err) {
+        console.error("Etkinlikler yüklenirken hata:", err.message);
+      } finally {
+        setLoadingEvents(false);
+      }
+    }
+    if (profile) {
+      loadEvents();
+    }
+  }, [profile]);
 
   // Kaydedilen Etkinlik ID'lerini Yükle
   useEffect(() => {
@@ -131,19 +144,31 @@ export default function Home() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-800">Kampüsündeki Etkinlikler</h2>
-          <button className="text-sm font-medium text-slate-900 hover:underline">Tümünü Gör</button>
+          <button className="text-sm font-medium text-slate-900 hover:underline" onClick={() => navigate("/discover")}>Tümünü Gör</button>
         </div>
 
-        <div className="space-y-4">
-          {mockEvents.map((event) => (
-            <EventCard 
-              key={event.id} 
-              event={event} 
-              isSaved={savedEventIds.includes(event.id)}
-              onToggleSave={handleToggleSave}
-            />
-          ))}
-        </div>
+        {loadingEvents ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 bg-white rounded-2xl border border-gray-150 shadow-sm">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+            <span className="text-sm font-medium">Etkinlikler yükleniyor...</span>
+          </div>
+        ) : events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-150 shadow-sm">
+            <Calendar className="h-10 w-10 mb-3 text-gray-300" />
+            <p className="text-sm font-medium">Henüz kampüsünüzde onaylanmış bir etkinlik bulunmuyor.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {events.map((event) => (
+              <EventCard 
+                key={event.id} 
+                event={event} 
+                isSaved={savedEventIds.includes(event.id)}
+                onToggleSave={handleToggleSave}
+              />
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

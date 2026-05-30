@@ -7,9 +7,10 @@ import Home from "./pages/Home";
 import EventDetail from "./pages/EventDetail";
 import Discover from "./pages/Discover";
 import AdminDashboard from "./pages/AdminDashboard";
-import SKSDashboard from "./pages/SKSDashboard"; // YENİ
-import OrganizerDashboard from "./pages/OrganizerDashboard"; // YENİ
+import SKSDashboard from "./pages/SKSDashboard";
+import OrganizerDashboard from "./pages/OrganizerDashboard";
 import Profile from "./pages/Profile";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   useEffect(() => {
@@ -28,15 +29,15 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/event/:id" element={<EventDetail />} />
-        <Route path="/discover" element={<Discover />} />
-        <Route path="/admin" element={<AdminDashboard />} />
         
-        {/* YENİ ROTALARIMIZ */}
-        <Route path="/sks" element={<SKSDashboard />} />
-        <Route path="/organizer" element={<OrganizerDashboard />} />
-        <Route path="/profile" element={<Profile />} />
+        {/* KORUMALI ROTALAR */}
+        <Route path="/home" element={<ProtectedRoute requiredRole="student"><Home /></ProtectedRoute>} />
+        <Route path="/event/:id" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
+        <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/sks" element={<ProtectedRoute requiredRole="sks"><SKSDashboard /></ProtectedRoute>} />
+        <Route path="/organizer" element={<ProtectedRoute requiredRole="organizer"><OrganizerDashboard /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   );

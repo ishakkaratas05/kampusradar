@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>KampüsRadar AI + Upload Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; background: #0f172a; color: #e2e8f0; }
+    h1 { color: #a78bfa; margin-bottom: 8px; font-size: 22px; }
+    h2 { color: #60a5fa; margin: 24px 0 12px; font-size: 17px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #334155; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    input[type="text"] { background: #0f172a; border: 1px solid #475569; color: #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 14px; flex: 1; min-width: 200px; }
+    button { background: #7c3aed; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    button:hover { background: #6d28d9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ok { color: #4ade80; font-weight: bold; }
+    .fail { color: #f87171; font-weight: bold; }
+    .wait { color: #fbbf24; font-weight: bold; }
+    .info { color: #94a3b8; font-size: 13px; }
+    pre { background: #0f172a; padding: 10px; border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; margin-top: 8px; color: #cbd5e1; border: 1px solid #1e293b; }
+    img.result { max-width: 280px; max-height: 350px; border-radius: 8px; border: 2px solid #475569; margin-top: 8px; display: block; }
+    .timer { font-size: 12px; color: #fbbf24; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <h1>🧪 KampüsRadar - AI & Upload Kapsamlı Test</h1>
+  <p class="info">Bu sayfa Pollinations AI'ı ve Supabase Storage'ı tarayıcınızdan test eder.</p>
+
+  <!-- BÖLÜM 1: POLLINATIONS TESTLERİ -->
+  <h2>🎨 Pollinations AI Testleri</h2>
+
+  <div class="card" id="test-simple">
+    <strong>Test A:</strong> Basit kısa prompt (img tag) <span id="statusA" class="wait">BEKLİYOR</span> <span id="timerA" class="timer"></span>
+    <div id="resultA"></div>
+  </div>
+
+  <div class="card" id="test-long">
+    <strong>Test B:</strong> Uzun prompt (img tag) <span id="statusB" class="wait">BEKLİYOR</span> <span id="timerB" class="timer"></span>
+    <div id="resultB"></div>
+  </div>
+
+  <div class="card" id="test-newimg">
+    <strong>Test C:</strong> new Image() ile yükleme (React'teki yöntem) <span id="statusC" class="wait">BEKLİYOR</span> <span id="timerC" class="timer"></span>
+    <div id="resultC"></div>
+  </div>
+
+  <div class="card">
+    <strong>Test D:</strong> Kendi başlığınızla deneyin
+    <div class="row" style="margin-top:8px;">
+      <input type="text" id="customTitle" placeholder="Etkinlik başlığı yazın (Örn: Blokzincir Zirvesi)" value="Yapay Zeka Konferansi" />
+      <button id="btnCustom" onclick="runCustomTest()">Üret</button>
+    </div>
+    <span id="statusD" class="wait"></span> <span id="timerD" class="timer"></span>
+    <div id="resultD"></div>
+  </div>
+
+  <!-- BÖLÜM 2: SUPABASE STORAGE TESTİ -->
+  <h2>📦 Supabase Storage Testi</h2>
+  <div class="card">
+    <strong>Test E:</strong> public-assets bucket'ına dosya yükleme
+    <div class="row" style="margin-top:8px;">
+      <input type="file" id="testFile" accept="image/*" style="color:#e2e8f0; font-size:13px;" />
+      <button id="btnUpload" onclick="runUploadTest()">Yükle</button>
+    </div>
+    <span id="statusE"></span>
+    <pre id="resultE" style="display:none;"></pre>
+  </div>
+
+  <script>
+    // ===================== SUPABASE CONFIG =====================
+    const SUPABASE_URL = 'https://vwtzkppabmkncbsthgdw.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3dHprcHBhYm1rbmNic3RoZ2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NDg0NDksImV4cCI6MjA5MzQyNDQ0OX0.QKNxxw8jW6hsdGpq-XjrlBZ-Mf6cSr5oCjOBVLUZByg';
+
+    // ===================== YARDIMCI =====================
+    function startTimer(id) {
+      const el = document.getElementById(id);
+      const start = Date.now();
+      const interval = setInterval(() => {
+        const s = ((Date.now() - start) / 1000).toFixed(1);
+        el.textContent = `(${s}s)`;
+      }, 100);
+      return () => clearInterval(interval);
+    }
+
+    // ===================== TEST A: Basit kısa prompt =====================
+    (function() {
+      const stopTimer = startTimer('timerA');
+      const img = document.createElement('img');
+      img.className = 'result';
+      const seed = Math.floor(Math.random() * 999999);
+      const url = `https://image.pollinations.ai/prompt/university%20event%20poster?width=512&height=768&seed=${seed}`;
+      img.onload = () => {
+        stopTimer();
+        document.getElementById('statusA').className = 'ok';
+        document.getElementById('statusA').textContent = 'BAŞARILI ✅';
+      };
+      img.onerror = () => {
+        stopTimer();
+        document.getElementById('statusA').className = 'fail';
+        document.getElementById('statusA').textContent = 'BAŞARISIZ ❌';
+      };
+      img.src = url;
+      const pre = document.createElement('pre');
+      pre.textContent = 'URL: ' + url;
+      document.getElementById('resultA').appendChild(pre);
+      document.getElementById('resultA').appendChild(img);
+    })();
+
+    // ===================== TEST B: Uzun prompt =====================
+    (function() {
+      const stopTimer = startTimer('timerB');
+      const img = document.createElement('img');
+      img.className = 'result';
+      const seed = Math.floor(Math.random() * 999999);
+      const prompt = 'Blokzincir Teknolojileri Zirvesi Seminer event poster modern vibrant';
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=768&seed=${seed}`;
+      img.onload = () => {
+        stopTimer();
+        document.getElementById('statusB').className = 'ok';
+        document.getElementById('statusB').textContent = 'BAŞARILI ✅';
+      };
+      img.onerror = () => {
+        stopTimer();
+        document.getElementById('statusB').className = 'fail';
+        document.getElementById('statusB').textContent = 'BAŞARISIZ ❌';
+      };
+      img.src = url;
+      const pre = document.createElement('pre');
+      pre.textContent = 'URL: ' + url;
+      document.getElementById('resultB').appendChild(pre);
+      document.getElementById('resultB').appendChild(img);
+    })();
+
+    // ===================== TEST C: new Image() (React yöntemi) =====================
+    (function() {
+      const stopTimer = startTimer('timerC');
+      const seed = Math.floor(Math.random() * 999999);
+      const prompt = 'Yapay Zeka Konferansi event poster modern vibrant';
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=768&seed=${seed}`;
+
+      const testImg = new Image();
+      testImg.onload = () => {
+        stopTimer();
+        document.getElementById('statusC').className = 'ok';
+        document.getElementById('statusC').textContent = 'BAŞARILI ✅';
+        // Göster
+        const showImg = document.createElement('img');
+        showImg.className = 'result';
+        showImg.src = url;
+        document.getElementById('resultC').appendChild(showImg);
+      };
+      testImg.onerror = (e) => {
+        stopTimer();
+        document.getElementById('statusC').className = 'fail';
+        document.getElementById('statusC').textContent = 'BAŞARISIZ ❌';
+        const pre = document.createElement('pre');
+        pre.textContent = 'new Image() onError tetiklendi.\nURL: ' + url;
+        document.getElementById('resultC').appendChild(pre);
+      };
+      testImg.src = url;
+
+      const pre = document.createElement('pre');
+      pre.textContent = 'URL: ' + url;
+      document.getElementById('resultC').appendChild(pre);
+    })();
+
+    // ===================== TEST D: Kullanıcı başlığı =====================
+    function runCustomTest() {
+      const title = document.getElementById('customTitle').value.trim();
+      if (!title) { alert('Lütfen bir başlık girin'); return; }
+
+      document.getElementById('btnCustom').disabled = true;
+      document.getElementById('resultD').innerHTML = '';
+      document.getElementById('statusD').className = 'wait';
+      document.getElementById('statusD').textContent = 'ÜRETİLİYOR...';
+      const stopTimer = startTimer('timerD');
+
+      const clean = title
+        .replace(/ö/g,'o').replace(/Ö/g,'O')
+        .replace(/ü/g,'u').replace(/Ü/g,'U')
+        .replace(/ş/g,'s').replace(/Ş/g,'S')
+        .replace(/ç/g,'c').replace(/Ç/g,'C')
+        .replace(/ğ/g,'g').replace(/Ğ/g,'G')
+        .replace(/ı/g,'i').replace(/İ/g,'I')
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+
+      const seed = Math.floor(Math.random() * 999999);
+      const prompt = `${clean} event poster modern vibrant`;
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=768&seed=${seed}`;
+
+      const pre = document.createElement('pre');
+      pre.textContent = `Orijinal: "${title}"\nTemizlenmiş: "${clean}"\nPrompt: "${prompt}"\nURL: ${url}`;
+      document.getElementById('resultD').appendChild(pre);
+
+      const testImg = new Image();
+      testImg.onload = () => {
+        stopTimer();
+        document.getElementById('statusD').className = 'ok';
+        document.getElementById('statusD').textContent = 'BAŞARILI ✅';
+        document.getElementById('btnCustom').disabled = false;
+        const showImg = document.createElement('img');
+        showImg.className = 'result';
+        showImg.src = url;
+        document.getElementById('resultD').appendChild(showImg);
+      };
+      testImg.onerror = () => {
+        stopTimer();
+        document.getElementById('statusD').className = 'fail';
+        document.getElementById('statusD').textContent = 'BAŞARISIZ ❌';
+        document.getElementById('btnCustom').disabled = false;
+      };
+      testImg.src = url;
+    }
+
+    // ===================== TEST E: Supabase Storage Upload =====================
+    async function runUploadTest() {
+      const fileInput = document.getElementById('testFile');
+      const file = fileInput.files[0];
+      if (!file) { alert('Lütfen bir dosya seçin'); return; }
+
+      document.getElementById('btnUpload').disabled = true;
+      document.getElementById('statusE').className = 'wait';
+      document.getElementById('statusE').textContent = 'YÜKLENİYOR...';
+      document.getElementById('resultE').style.display = 'block';
+      document.getElementById('resultE').textContent = '';
+
+      const log = (msg) => { document.getElementById('resultE').textContent += msg + '\n'; };
+
+      try {
+        const ext = file.name.split('.').pop();
+        const fileName = `test_${Date.now()}.${ext}`;
+        const filePath = `posters/${fileName}`;
+
+        log(`Dosya: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+        log(`Hedef: public-assets/${filePath}`);
+        log(`Supabase URL: ${SUPABASE_URL}`);
+        log('');
+
+        // Manuel fetch ile yükleme (supabase client olmadan)
+        const uploadUrl = `${SUPABASE_URL}/storage/v1/object/public-assets/${filePath}`;
+        log(`Upload URL: ${uploadUrl}`);
+
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+            'Content-Type': file.type,
+            'x-upsert': 'true'
+          },
+          body: file
+        });
+
+        const responseText = await response.text();
+        log(`HTTP Status: ${response.status} ${response.statusText}`);
+        log(`Response: ${responseText}`);
+
+        if (response.ok) {
+          const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/public-assets/${filePath}`;
+          log(`\nPublic URL: ${publicUrl}`);
+          document.getElementById('statusE').className = 'ok';
+          document.getElementById('statusE').textContent = 'BAŞARILI ✅';
+        } else {
+          document.getElementById('statusE').className = 'fail';
+          document.getElementById('statusE').textContent = 'BAŞARISIZ ❌';
+        }
+      } catch (e) {
+        log(`HATA: ${e.message}\nStack: ${e.stack}`);
+        document.getElementById('statusE').className = 'fail';
+        document.getElementById('statusE').textContent = 'BAŞARISIZ ❌';
+      } finally {
+        document.getElementById('btnUpload').disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
