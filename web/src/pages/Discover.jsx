@@ -49,7 +49,7 @@ export default function Discover() {
           .from("events")
           .select(`
             *,
-            universities(name),
+            universities(name, logo_url),
             profiles:organizer_id(full_name)
           `)
           .eq("status", "approved")
@@ -65,6 +65,7 @@ export default function Discover() {
           date: ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
           location: ev.location,
           university: ev.universities?.name || "Bilinmeyen Üniversite",
+          universityLogo: ev.universities?.logo_url,
           universityId: ev.university_id,
           organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
           imageUrl: ev.image_url
@@ -163,7 +164,8 @@ export default function Discover() {
       event.title?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
       event.description?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
       event.location?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
-      event.category?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR"));
+      event.category?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR")) ||
+      event.university?.toLocaleLowerCase("tr-TR").includes(searchQuery.toLocaleLowerCase("tr-TR"));
 
     const matchesUniversity = selectedUniId === "" || event.universityId === selectedUniId;
 

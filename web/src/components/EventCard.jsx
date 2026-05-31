@@ -44,7 +44,11 @@ export default function EventCard({ event, isSaved = false, onToggleSave = null 
       {/* Üniversite ve Düzenleyici Alanı */}
       <div className="mt-1.5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-gray-600">
         <div className="flex items-center gap-1.5">
-          <School className="h-4 w-4 text-blue-500" />
+          {event.universityLogo ? (
+            <img src={event.universityLogo} alt={event.university} className="h-4 w-4 object-contain rounded-sm" />
+          ) : (
+            <School className="h-4 w-4 text-blue-500" />
+          )}
           <span className="text-gray-800">{event.university}</span>
         </div>
         <div className="flex items-center gap-1.5">

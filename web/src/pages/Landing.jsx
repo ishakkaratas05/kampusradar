@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, School, MapPin, Calendar, Info, ChevronDown, LogOut, LayoutDashboard } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import ProfileDropdown from "../components/ProfileDropdown";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -20,13 +21,7 @@ const roleLabels = {
   student: "Öğrenci",
 };
 
-// Kullanıcı adının baş harflerini döndürür (avatar için)
-function getInitials(name, email) {
-  if (name) {
-    return name.split(" ").filter(Boolean).map((n) => n[0]).join("").substring(0, 2).toUpperCase();
-  }
-  return email?.[0]?.toUpperCase() || "?";
-}
+// function getInitials removed as it's now in ProfileDropdown
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -35,19 +30,7 @@ export default function Landing() {
   const [universities, setUniversities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  // Dışarı tıklanınca dropdown'u kapat
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  // DropdownRef removed as it is now in ProfileDropdown
 
   // Üniversiteleri çek (AuthContext'ten bağımsız raw fetch)
   useEffect(() => {
@@ -78,13 +61,9 @@ export default function Landing() {
     fetchUniversities();
   }, []);
 
-  const handleSignOut = async () => {
-    setDropdownOpen(false);
-    await signOut();
-  };
+  // handleSignOut removed as it is now handled by ProfileDropdown
 
   const handleDashboard = () => {
-    setDropdownOpen(false);
     const route = roleRoutes[profile?.role] || "/home";
     navigate(route);
   };
@@ -106,56 +85,7 @@ export default function Landing() {
         {/* Sağ Taraf: Giriş yapmadıysa buton, yapmışsa profil */}
         {user ? (
           /* ── Giriş yapılmış: Profil Dropdown ── */
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-white/10 cursor-pointer"
-            >
-              {/* Avatar */}
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900 font-bold text-sm shadow-sm uppercase shrink-0">
-                {getInitials(profile?.full_name, user.email)}
-              </div>
-              {/* İsim ve Rol */}
-              <div className="hidden sm:flex flex-col items-start leading-tight">
-                <span className="text-sm font-bold text-white truncate max-w-[140px]">
-                  {profile?.full_name || user.email}
-                </span>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  {roleLabels[profile?.role] || "Kullanıcı"}
-                </span>
-              </div>
-              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {/* Dropdown Menü */}
-            {dropdownOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-slate-800 border border-slate-700 shadow-2xl overflow-hidden animate-in">
-                {/* Üst bilgi alanı */}
-                <div className="px-4 py-3 border-b border-slate-700">
-                  <p className="text-xs text-slate-400 font-medium">Giriş yapıldı</p>
-                  <p className="text-sm font-bold text-white truncate mt-0.5">{user.email}</p>
-                </div>
-                {/* Menü öğeleri */}
-                <div className="py-1">
-                  <button
-                    onClick={handleDashboard}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700 hover:text-white transition cursor-pointer"
-                  >
-                    <LayoutDashboard className="h-4 w-4 text-blue-400" />
-                    {dashboardLabel} Paneli
-                  </button>
-                  <hr className="border-slate-700 my-1" />
-                  <button
-                    onClick={handleSignOut}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition cursor-pointer"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Çıkış Yap
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <ProfileDropdown />
         ) : (
           /* ── Giriş yapılmamış: Giriş Yap butonu ── */
           <button

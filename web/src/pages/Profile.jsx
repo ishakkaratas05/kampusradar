@@ -18,10 +18,8 @@ import {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
 
-  // Profile ve Üniversite State
-  const [profileData, setProfileData] = useState(null);
   const [uniName, setUniName] = useState("");
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -36,28 +34,30 @@ export default function Profile() {
     }
   }, [user, navigate]);
 
-  // Profil Bilgilerini Çek (Üniversiteyle birlikte Join)
+  // Profil hazır olduğunda Üniversite bilgisini çek
   useEffect(() => {
-    async function loadProfile() {
-      if (!user) return;
+    async function loadUniversity() {
+      if (!profile?.university_id) {
+        setLoadingProfile(false);
+        return;
+      }
       try {
         const { data, error } = await supabase
-          .from("profiles")
-          .select("*, universities(name)")
-          .eq("id", user.id)
+          .from("universities")
+          .select("name")
+          .eq("id", profile.university_id)
           .single();
 
         if (error) throw error;
-        setProfileData(data);
-        setUniName(data?.universities?.name || "Belirtilmemiş");
+        setUniName(data?.name || "Belirtilmemiş");
       } catch (err) {
-        console.error("Profil çekme hatası:", err.message);
+        console.error("Üniversite bilgisi çekme hatası:", err.message);
       } finally {
         setLoadingProfile(false);
       }
     }
-    loadProfile();
-  }, [user]);
+    loadUniversity();
+  }, [profile]);
 
   // Favori Etkinlikleri Çek (Events ve Universities Join)
   const fetchSavedEvents = async () => {
@@ -154,25 +154,25 @@ export default function Profile() {
       <Navbar />
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-8 ${profile?.role === "student" ? "lg:grid-cols-3" : "max-w-md mx-auto"}`}>
           
           {/* Sol Kolon: Profil Kartı */}
-          <div className="lg:col-span-1">
+          <div className={profile?.role === "student" ? "lg:col-span-1" : ""}>
             <div className="rounded-2xl bg-slate-900 p-6 text-white border border-slate-800 shadow-xl flex flex-col items-center">
               
               {/* Profil Resmi/Avatar Dairesi */}
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-slate-900 text-3xl font-extrabold shadow-md mb-4 uppercase">
-                {profileData?.full_name 
-                  ? profileData.full_name.split(" ").filter(Boolean).map(n => n[0]).join("").substring(0, 2)
+                {profile?.full_name 
+                  ? profile.full_name.split(" ").filter(Boolean).map(n => n[0]).join("").substring(0, 2)
                   : user.email[0]}
               </div>
 
               {/* Kullanıcı Adı ve Rolü */}
               <h2 className="text-xl font-bold text-center mb-1">
-                {profileData?.full_name || "Yükleniyor..."}
+                {profile?.full_name || "Yükleniyor..."}
               </h2>
               <span className="rounded-lg bg-blue-600/25 px-2.5 py-0.5 text-xs font-bold text-blue-400 border border-blue-500/20 mb-6">
-                {profileData ? getRoleLabel(profileData.role) : "Öğrenci"}
+                {profile ? getRoleLabel(profile.role) : "Öğrenci"}
               </span>
 
               {/* Bilgi Listesi */}
@@ -181,7 +181,7 @@ export default function Profile() {
                   <User className="h-5 w-5 text-slate-500 shrink-0" />
                   <div>
                     <p className="text-xs text-slate-500 font-medium">Ad Soyad</p>
-                    <p className="font-semibold text-white">{profileData?.full_name || "-"}</p>
+                    <p className="font-semibold text-white">{profile?.full_name || "-"}</p>
                   </div>
                 </div>
 
@@ -205,7 +205,7 @@ export default function Profile() {
                   <Shield className="h-5 w-5 text-slate-500 shrink-0" />
                   <div>
                     <p className="text-xs text-slate-500 font-medium">Hesap Türü</p>
-                    <p className="font-semibold text-white">{profileData ? getRoleLabel(profileData.role) : "-"}</p>
+                    <p className="font-semibold text-white">{profile ? getRoleLabel(profile.role) : "-"}</p>
                   </div>
                 </div>
               </div>
@@ -221,8 +221,9 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Sağ Kolon: Kaydedilen Etkinlikler */}
-          <div className="lg:col-span-2">
+          {/* Sağ Kolon: Kaydedilen Etkinlikler (Sadece Öğrenciler İçin) */}
+          {profile?.role === "student" && (
+            <div className="lg:col-span-2">
             <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 min-h-[400px] flex flex-col">
               
               <div className="mb-6 flex items-center justify-between border-b border-gray-100 pb-4">
@@ -300,6 +301,7 @@ export default function Profile() {
 
             </div>
           </div>
+          )}
 
         </div>
       </main>

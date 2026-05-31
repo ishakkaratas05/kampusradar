@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw } from "lucide-react";
+import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
+import ProfileDropdown from "../components/ProfileDropdown";
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate();
@@ -16,9 +17,13 @@ export default function OrganizerDashboard() {
 
   const [aiPreview, setAiPreview] = useState({ isOpen: false, url: "", blob: null, isLoading: false, hasError: false });
   const [errorModal, setErrorModal] = useState({ isOpen: false, message: "" });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, eventId: null });
+  const [viewEvent, setViewEvent] = useState(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null });
+  const [universityName, setUniversityName] = useState("");
+  const [universityLogo, setUniversityLogo] = useState("");
 
   // Etkinlikleri Yükle
   useEffect(() => {
@@ -43,12 +48,42 @@ export default function OrganizerDashboard() {
     fetchMyEvents();
   }, [user]);
 
-  const formatTitleCase = (text) => {
-    if (!text) return "";
-    return text.split(" ").map(word => {
-      if (word.length === 0) return "";
-      return word.charAt(0).toLocaleUpperCase("tr-TR") + word.slice(1).toLocaleLowerCase("tr-TR");
-    }).join(" ");
+  useEffect(() => {
+    async function fetchUni() {
+      if (profile?.university_id) {
+        const { data } = await supabase.from("universities").select("name, logo_url").eq("id", profile.university_id).single();
+        if (data) {
+          setUniversityName(data.name);
+          setUniversityLogo(data.logo_url);
+        }
+      }
+    }
+    fetchUni();
+  }, [profile]);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.eventId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .delete()
+        .eq("id", deleteModal.eventId)
+        .select();
+        
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        throw new Error("Veritabanından silinemedi (Güvenlik/RLS yetkisi eksik olabilir).");
+      }
+      
+      setMyEvents(prev => prev.filter(ev => ev.id !== deleteModal.eventId));
+      setDeleteModal({ isOpen: false, eventId: null });
+    } catch (err) {
+      console.error("Etkinlik silinirken hata:", err.message);
+      setErrorModal({ isOpen: true, message: "Etkinlik silinirken bir hata oluştu: " + err.message });
+      setDeleteModal({ isOpen: false, eventId: null });
+    }
   };
 
   const handleFormSubmit = async (e) => {
@@ -166,7 +201,7 @@ export default function OrganizerDashboard() {
     return lines;
   };
 
-  const generateCanvasPoster = (title, category, date, location, description) => {
+  const generateCanvasPoster = (title, category, date, location, description, uniName, clubName) => {
     const W = 768, H = 1024;
     const canvas = document.createElement('canvas');
     canvas.width = W;
@@ -203,19 +238,23 @@ export default function OrganizerDashboard() {
     // 4. Üst dekoratif çizgi
     ctx.fillStyle = palette.text;
     ctx.globalAlpha = 0.3;
-    ctx.fillRect(60, 80, 100, 4);
+    ctx.fillRect(60, 60, 100, 4);
     ctx.globalAlpha = 1;
 
-    // 5. "KampüsRadar" marka yazısı
-    ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+    // 5. Üniversite ve Topluluk Adı
+    ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.6;
-    ctx.fillText('KampüsRadar', 60, 120);
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(`T.C. ${uniName || 'Üniversite'}`, 60, 95);
+    
+    ctx.font = '600 16px "Segoe UI", Arial, sans-serif';
+    ctx.globalAlpha = 0.7;
+    ctx.fillText(clubName || 'Öğrenci Topluluğu', 60, 125);
     ctx.globalAlpha = 1;
 
     // 6. Kategori badge
     if (category) {
-      const badgeText = category.toUpperCase();
+      const badgeText = category.toLocaleUpperCase('tr-TR');
       ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
       const badgeW = ctx.measureText(badgeText).width + 32;
       ctx.fillStyle = palette.badge;
@@ -234,17 +273,17 @@ export default function OrganizerDashboard() {
         ctx.closePath();
         ctx.fill();
       };
-      roundRect(60, 180, badgeW, 36, 8);
+      roundRect(60, 160, badgeW, 36, 8);
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(badgeText, 76, 204);
+      ctx.fillText(badgeText, 76, 184);
     }
 
     // 7. Ana başlık (büyük, kalın, word-wrap)
     ctx.font = 'bold 56px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = palette.text;
     const titleLines = wrapText(ctx, title, W - 120);
-    const titleY = category ? 280 : 240;
+    const titleY = category ? 260 : 220;
     titleLines.forEach((line, i) => {
       ctx.fillText(line, 60, titleY + i * 68);
     });
@@ -273,34 +312,102 @@ export default function OrganizerDashboard() {
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(0, H - 220, W, 220);
 
-    // 9. Tarih bilgisi
-    let infoY = H - 170;
+    // 9. Tarih, Saat ve Konum bilgisi (Emoji yerine vektörel ikonlar)
+    const drawIcon = (type, x, y, size) => {
+      ctx.save();
+      ctx.strokeStyle = palette.text;
+      ctx.fillStyle = palette.text;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      if (type === 'calendar') {
+        // Takvim gövdesi
+        ctx.strokeRect(x, y + 3, size, size - 3);
+        // Üst şerit
+        ctx.fillRect(x, y + 3, size, 4);
+        // Halkalar
+        ctx.fillRect(x + 4, y, 2.5, 5);
+        ctx.fillRect(x + size - 6.5, y, 2.5, 5);
+        // Izgara noktaları
+        ctx.fillRect(x + 4, y + 10, 2, 2);
+        ctx.fillRect(x + 10, y + 10, 2, 2);
+        ctx.fillRect(x + 16, y + 10, 2, 2);
+        ctx.fillRect(x + 4, y + 15, 2, 2);
+        ctx.fillRect(x + 10, y + 15, 2, 2);
+        ctx.fillRect(x + 16, y + 15, 2, 2);
+      } else if (type === 'clock') {
+        // Saat dairesi
+        ctx.beginPath();
+        ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
+        ctx.stroke();
+        // Akrep ve yelkovan
+        ctx.beginPath();
+        ctx.moveTo(x + size/2, y + size/2);
+        ctx.lineTo(x + size/2, y + 6); // yelkovan
+        ctx.moveTo(x + size/2, y + size/2);
+        ctx.lineTo(x + size/2 + 5, y + size/2); // akrep
+        ctx.stroke();
+      } else if (type === 'map-pin') {
+        const cx = x + size/2;
+        const cy = y + size/3 + 2;
+        const r = size/3.8;
+        
+        ctx.beginPath();
+        // Symmetrical teardrop shape using arc and lines
+        ctx.arc(cx, cy, r, 0.75 * Math.PI, 0.25 * Math.PI);
+        ctx.lineTo(cx, y + size - 1);
+        ctx.closePath();
+        ctx.stroke();
+        
+        // Inner circle dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    };
+
+    let infoY = H - 165;
     ctx.font = '600 20px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.7;
+    ctx.globalAlpha = 0.85;
+
     if (date) {
       try {
         const d = new Date(date);
-        const formatted = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        ctx.fillText('📅  ' + formatted, 60, infoY);
-        infoY += 40;
+        const dateStr = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+        const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        
+        // Tarih Satırı
+        drawIcon('calendar', 60, infoY - 18, 22);
+        ctx.fillText(`Tarih: ${dateStr}`, 94, infoY);
+        infoY += 38;
+
+        // Saat Satırı
+        drawIcon('clock', 60, infoY - 18, 22);
+        ctx.fillText(`Saat: ${timeStr}`, 94, infoY);
+        infoY += 38;
       } catch(e) {}
     }
 
     // 10. Konum bilgisi
     if (location) {
-      ctx.fillText('📍  ' + location, 60, infoY);
-      infoY += 40;
+      drawIcon('map-pin', 60, infoY - 18, 22);
+      ctx.fillText(`Konum: ${location}`, 94, infoY);
+      infoY += 38;
     }
     ctx.globalAlpha = 1;
 
-    // 11. Alt çizgi dekorasyon
+    // 11. Alt çizgi dekorasyon ve KampüsRadar
     ctx.fillStyle = palette.text;
     ctx.globalAlpha = 0.15;
     ctx.fillRect(60, H - 50, W - 120, 2);
-    ctx.globalAlpha = 0.4;
-    ctx.font = '14px "Segoe UI", Arial, sans-serif';
-    ctx.fillText('kampusradar.com', 60, H - 25);
+    ctx.globalAlpha = 0.5;
+    ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+    const krText = 'KampüsRadar';
+    const krW = ctx.measureText(krText).width;
+    ctx.fillText(krText, W - 60 - krW, H - 20); // Alt sağ köşe
     ctx.globalAlpha = 1;
 
     return canvas;
@@ -321,7 +428,9 @@ export default function OrganizerDashboard() {
         newEvent.category,
         newEvent.date,
         newEvent.location,
-        newEvent.description
+        newEvent.description,
+        universityName,
+        profile?.full_name
       );
 
       // Canvas'ı blob'a çevir
@@ -363,18 +472,32 @@ export default function OrganizerDashboard() {
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       
       <header className="bg-slate-900 px-6 py-4 shadow-md flex items-center justify-between text-white sticky top-0 z-40">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate("/")} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition cursor-pointer">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <button onClick={() => navigate("/")} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition cursor-pointer shrink-0">
             <ArrowLeft className="h-5 w-5 text-slate-300" />
           </button>
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight">{profile?.full_name || "Organizatör"}</h1>
-            <p className="text-xs text-slate-400 font-medium">Etkinlik Düzenleme Paneli</p>
+          <div className="truncate">
+            <h1 className="text-xl font-extrabold tracking-tight truncate">{profile?.full_name || "Organizatör"}</h1>
+            <p className="text-xs text-slate-400 font-medium truncate">Etkinlik Düzenleme Paneli</p>
           </div>
         </div>
-        <span className="text-sm font-bold bg-white text-slate-900 px-3 py-1.5 rounded-lg shadow-sm">
-          Organizatör
-        </span>
+        
+        {universityName && (
+          <div className="flex flex-col items-center justify-center text-center px-4 shrink-0">
+            {universityLogo ? (
+              <img src={universityLogo} alt={universityName} className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shadow-sm" />
+            ) : (
+              <School className="h-8 w-8 text-slate-300" />
+            )}
+            <span className="text-[10px] font-bold text-slate-300 mt-1 max-w-[120px] sm:max-w-[200px] truncate leading-tight">
+              {universityName}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end flex-1 min-w-0">
+          <ProfileDropdown />
+        </div>
       </header>
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
@@ -406,7 +529,11 @@ export default function OrganizerDashboard() {
         ) : (
           <div className="space-y-4">
             {myEvents.map((ev) => (
-              <div key={ev.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div 
+                key={ev.id} 
+                className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 hover:shadow-md transition cursor-pointer"
+                onClick={() => setViewEvent(ev)}
+              >
                 <div>
                   <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-700 font-black tracking-widest uppercase px-2 py-0.5 rounded-md">{ev.category}</span>
                   <h3 className="text-lg font-bold text-gray-900 mt-1.5">{ev.title}</h3>
@@ -416,7 +543,7 @@ export default function OrganizerDashboard() {
                   </div>
                 </div>
 
-                <div className="shrink-0">
+                <div className="shrink-0 flex items-center gap-3">
                   {ev.status === "approved" && (
                     <span className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1.5 rounded-xl text-xs font-bold border border-green-100">
                       <CheckCircle className="h-4 w-4" /> Yayınlandı (SKS Onaylı)
@@ -439,6 +566,13 @@ export default function OrganizerDashboard() {
                       )}
                     </div>
                   )}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, eventId: ev.id }); }}
+                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                    title="Başvuruyu Sil / Geri Çek"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -468,7 +602,7 @@ export default function OrganizerDashboard() {
                     <input 
                       required type="text" placeholder="Örn: Blokzincir Teknolojileri Zirvesi"
                       value={newEvent.title} 
-                      onChange={(e) => setNewEvent({...newEvent, title: formatTitleCase(e.target.value)})}
+                      onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
                       className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                     />
                   </div>
@@ -476,17 +610,28 @@ export default function OrganizerDashboard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Kategori</label>
-                      <input 
-                        required type="text" placeholder="Örn: Seminer"
+                      <select 
+                        required
                         value={newEvent.category} 
-                        onChange={(e) => setNewEvent({...newEvent, category: formatTitleCase(e.target.value)})}
-                        className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
-                      />
+                        onChange={(e) => setNewEvent({...newEvent, category: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white appearance-none"
+                      >
+                        <option value="" disabled>Seçiniz</option>
+                        <option value="Seminer / Konferans">Seminer / Konferans</option>
+                        <option value="Eğitim / Atölye">Eğitim / Atölye</option>
+                        <option value="Konser / Müzik">Konser / Müzik</option>
+                        <option value="Sergi / Sanat">Sergi / Sanat</option>
+                        <option value="Spor / Turnuva">Spor / Turnuva</option>
+                        <option value="Tiyatro / Gösteri">Tiyatro / Gösteri</option>
+                        <option value="Sosyal Sorumluluk">Sosyal Sorumluluk</option>
+                        <option value="Diğer">Diğer</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Tarih / Saat</label>
                       <input 
                         required type="datetime-local" 
+                        step="900"
                         value={newEvent.date} 
                         onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
@@ -500,7 +645,7 @@ export default function OrganizerDashboard() {
                       <input 
                         required type="text" placeholder="Örn: Rektörlük Salonu"
                         value={newEvent.location} 
-                        onChange={(e) => setNewEvent({...newEvent, location: formatTitleCase(e.target.value)})}
+                        onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                       />
                     </div>
@@ -633,13 +778,109 @@ export default function OrganizerDashboard() {
         </div>
       )}
 
+      {/* SİLME ONAY MODALI */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transform transition-all">
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 mb-2">Başvuruyu Sil</h3>
+              <p className="text-slate-500 text-sm">Bu etkinlik başvurusunu silmek / geri çekmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-gray-100 flex gap-3">
+              <button 
+                onClick={() => setDeleteModal({ isOpen: false, eventId: null })}
+                className="flex-1 px-4 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition shadow-sm cursor-pointer"
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleDeleteConfirm}
+                className="flex-1 px-4 py-2.5 text-sm font-bold bg-red-500 text-white rounded-xl hover:bg-red-600 transition shadow-sm cursor-pointer"
+              >
+                Evet, Sil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ETKİNLİK DETAY İNCELEME MODALI */}
+      {viewEvent && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] transform transition-all">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50 shrink-0">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-500" /> Etkinlik Detayları
+              </h3>
+              <button onClick={() => setViewEvent(null)} className="text-gray-400 hover:text-gray-600 transition cursor-pointer bg-white rounded-full p-1 hover:bg-gray-200"><X className="h-5 w-5" /></button>
+            </div>
+            
+            <div className="overflow-y-auto p-6 flex flex-col md:flex-row gap-8">
+              <div className="flex-1 space-y-5">
+                <div>
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Etkinlik Başlığı</h4>
+                  <p className="text-lg font-bold text-slate-900">{viewEvent.title}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 bg-slate-50 p-4 rounded-xl border border-gray-100">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Kategori</h4>
+                    <p className="font-semibold text-slate-800">{viewEvent.category}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Tarih / Saat</h4>
+                    <p className="font-semibold text-slate-800">
+                      {viewEvent.date ? new Date(viewEvent.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Konum / Salon</h4>
+                    <p className="font-semibold text-slate-800">{viewEvent.location}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Kapasite</h4>
+                    <p className="font-semibold text-slate-800">{viewEvent.capacity || "Belirtilmedi"}</p>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Detaylı Açıklama</h4>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-gray-100">
+                    <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">{viewEvent.description}</p>
+                  </div>
+                </div>
+              </div>
+
+              {viewEvent.image_url && (
+                <div className="w-full md:w-[260px] shrink-0 flex flex-col gap-2">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Afiş Görseli</h4>
+                  <div className="rounded-xl overflow-hidden shadow-md border border-gray-200">
+                    <img src={viewEvent.image_url} alt="Etkinlik Afişi" className="w-full h-auto object-cover" />
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 bg-slate-50 border-t border-gray-100 flex justify-end shrink-0">
+              <button 
+                onClick={() => setViewEvent(null)}
+                className="px-6 py-2.5 text-sm font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition shadow-sm cursor-pointer"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI ÖNİZLEME VE ONAY MODALI */}
       {aiPreview.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col my-8">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-purple-500" /> AI Afişiniz Hazır!
+                <Sparkles className="h-5 w-5 text-purple-500" /> Canvas afişiniz hazır!
               </h3>
               <button 
                 onClick={() => setAiPreview({ isOpen: false, url: "", blob: null })} 

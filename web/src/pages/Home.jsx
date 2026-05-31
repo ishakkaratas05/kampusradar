@@ -12,27 +12,42 @@ export default function Home() {
   const [events, setEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [savedEventIds, setSavedEventIds] = useState([]);
+  const [universityInfo, setUniversityInfo] = useState(null);
 
   const isUUID = (id) => {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
   };
 
-  // Üniversite Etkinliklerini Yükle
+  // Tüm Onaylanmış Etkinlikleri Yükle
   useEffect(() => {
     async function loadEvents() {
-      if (!profile?.university_id) return;
       try {
         setLoadingEvents(true);
-        const { data, error } = await supabase
+        let query = supabase
           .from("events")
           .select(`
             *,
-            universities(name),
+            universities(name, logo_url),
             profiles:organizer_id(full_name)
           `)
-          .eq("university_id", profile.university_id)
           .eq("status", "approved")
           .order("date", { ascending: true });
+
+        // Eğer kullanıcı öğrenciyse ve profil yüklendiyse, sadece kendi üniversitesindeki etkinlikleri filtrele
+        if (profile?.role === "student" && profile?.university_id) {
+          query = query.eq("university_id", profile.university_id);
+
+          // Kullanıcının üniversite bilgilerini logoyu gösterebilmek için ayrıca çekelim
+          const { data: uniData } = await supabase
+            .from("universities")
+            .select("name, logo_url")
+            .eq("id", profile.university_id)
+            .single();
+            
+          if (uniData) setUniversityInfo(uniData);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -44,6 +59,7 @@ export default function Home() {
           date: ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
           location: ev.location,
           university: ev.universities?.name || "Bilinmeyen Üniversite",
+          universityLogo: ev.universities?.logo_url,
           organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
           imageUrl: ev.image_url
         }));
@@ -55,7 +71,8 @@ export default function Home() {
         setLoadingEvents(false);
       }
     }
-    if (profile) {
+    // Profil hazır olana kadar bekle, böylece doğru üniversiteye göre filtreleyebiliriz
+    if (profile !== undefined) {
       loadEvents();
     }
   }, [profile]);
@@ -143,8 +160,19 @@ export default function Home() {
 
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-800">Kampüsündeki Etkinlikler</h2>
-          <button className="text-sm font-medium text-slate-900 hover:underline" onClick={() => navigate("/discover")}>Tümünü Gör</button>
+          <div className="flex items-center gap-3">
+            {universityInfo?.logo_url && (
+              <div className="h-12 w-12 bg-white rounded-xl border border-gray-200 p-1.5 flex items-center justify-center shadow-sm shrink-0">
+                <img src={universityInfo.logo_url} alt={universityInfo.name} className="h-full w-full object-contain" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">Kampüsündeki Etkinlikler</h2>
+              {universityInfo?.name && (
+                <p className="text-sm font-semibold text-slate-500">{universityInfo.name}</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {loadingEvents ? (

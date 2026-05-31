@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon, Bookmark, Loader2, AlertCircle } from "lucide-react";
+import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon, Bookmark, Loader2, AlertCircle, School } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
@@ -23,7 +23,7 @@ export default function EventDetail() {
           .from("events")
           .select(`
             *,
-            universities(name),
+            universities(name, logo_url),
             profiles:organizer_id(full_name)
           `)
           .eq("id", id)
@@ -39,6 +39,7 @@ export default function EventDetail() {
           date: data.date ? new Date(data.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
           location: data.location,
           university: data.universities?.name || "Bilinmeyen Üniversite",
+          universityLogo: data.universities?.logo_url,
           organizer: data.profiles?.full_name || "Bilinmeyen Topluluk",
           posterUrl: data.image_url
         });
@@ -113,10 +114,10 @@ export default function EventDetail() {
     <div className="min-h-screen bg-gray-50 pb-10">
       
       {/* Üst Bar */}
-      <div className="sticky top-0 z-10 bg-white px-4 py-4 shadow-sm flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-white px-6 py-4 shadow-sm flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 cursor-pointer"
+          className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-900 cursor-pointer"
         >
           <ArrowLeft className="h-5 w-5" />
           Geri Dön
@@ -132,87 +133,114 @@ export default function EventDetail() {
         </button>
       </div>
 
-      <main className="mx-auto max-w-2xl bg-white shadow-sm sm:mt-6 sm:overflow-hidden sm:rounded-2xl">
+      <div className="mx-auto max-w-5xl sm:mt-6 px-4">
         {loadingEvent ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <Loader2 className="h-10 w-10 animate-spin text-slate-900" />
             <span className="text-sm font-semibold">Etkinlik detayları yükleniyor...</span>
           </div>
         ) : !event ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-3 text-red-500">
+          <div className="flex flex-col items-center justify-center py-32 gap-3 text-red-500 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <AlertCircle className="h-12 w-12" />
             <span className="text-sm font-semibold">Etkinlik bulunamadı veya silinmiş.</span>
           </div>
         ) : (
-          <>
-            {/* Afiş Alanı (Koyu etiketli) */}
-            <div className="relative h-64 w-full bg-gray-200 sm:h-80">
-              {event.posterUrl ? (
-                <img src={event.posterUrl} alt={event.title} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-gray-400">
-                  <ImageIcon className="h-12 w-12" />
-                  <span className="ml-2">Afiş Bulunamadı</span>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
+            {/* Sol Bölüm: Detaylar (Bağımsız Kart) */}
+            <div className="md:col-span-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 flex flex-col justify-between min-h-[450px]">
+              <div>
+                {/* Üniversite Logo + Adı ve Kategori Rozetleri */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  {event.universityLogo ? (
+                    <div className="h-7 w-7 bg-white rounded-lg border border-gray-200 p-0.5 flex items-center justify-center shrink-0 shadow-sm">
+                      <img src={event.universityLogo} alt={event.university} className="h-full w-full object-contain" />
+                    </div>
+                  ) : (
+                    <div className="h-7 w-7 bg-slate-100 rounded-lg border border-gray-200 p-1 flex items-center justify-center shrink-0">
+                      <School className="h-4 w-4 text-slate-400" />
+                    </div>
+                  )}
+                  <span className="text-[10px] bg-slate-100 text-slate-700 font-extrabold tracking-widest uppercase px-2.5 py-1.5 rounded-md border border-slate-200">
+                    {event.university}
+                  </span>
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 font-extrabold tracking-widest uppercase px-2.5 py-1.5 rounded-md border border-indigo-100">
+                    {event.category}
+                  </span>
                 </div>
-              )}
-              <div className="absolute left-4 top-4 rounded-lg bg-slate-900 px-3 py-1 text-xs font-bold text-white uppercase tracking-wider shadow-md">
-                {event.category}
+                
+                <h1 className="text-2xl font-black text-gray-900 sm:text-3xl mt-2 leading-tight">
+                  {event.title}
+                </h1>
+
+                {/* İkonlu Detay Kutuları */}
+                <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-gray-100 bg-slate-50/50 p-5">
+                  <div className="flex items-center gap-3.5 text-gray-700">
+                    <div className="rounded-xl bg-slate-200/70 p-2.5 text-slate-900">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400">Düzenleyen</p>
+                      <p className="font-bold text-gray-900 text-sm mt-0.5">{event.organizer}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3.5 text-gray-700">
+                    <div className="rounded-xl bg-slate-200/70 p-2.5 text-slate-900">
+                      <Calendar className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400">Tarih ve Saat</p>
+                      <p className="font-bold text-gray-900 text-sm mt-0.5">{event.date}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3.5 text-gray-700">
+                    <div className="rounded-xl bg-red-100/70 p-2.5 text-red-600">
+                      <MapPin className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400">Konum</p>
+                      <p className="font-bold text-gray-900 text-sm mt-0.5">{event.location}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <h2 className="text-lg font-extrabold text-gray-900 border-b border-gray-100 pb-2 mb-3">
+                    Etkinlik Hakkında
+                  </h2>
+                  <p className="leading-relaxed text-gray-600 text-sm whitespace-pre-wrap">
+                    {event.description}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            {/* Detay İçeriği */}
-            <div className="p-6 sm:p-8">
-              <h1 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">{event.title}</h1>
-
-              {/* İkonlu Detay Kutuları */}
-              <div className="mt-6 flex flex-col gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
-                <div className="flex items-center gap-3 text-gray-700">
-                  <div className="rounded-full bg-slate-200 p-2 text-slate-900">
-                    <Users className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Düzenleyen</p>
-                    <p className="font-semibold">{event.organizer} ({event.university})</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-gray-700">
-                  <div className="rounded-full bg-slate-200 p-2 text-slate-900">
-                    <Calendar className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Tarih ve Saat</p>
-                    <p className="font-semibold">{event.date}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-gray-700">
-                  <div className="rounded-full bg-red-100 p-2 text-red-600">
-                    <MapPin className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Konum</p>
-                    <p className="font-semibold">{event.location}</p>
-                  </div>
-                </div>
-              </div>
-
+              {/* Katıl Butonu */}
               <div className="mt-8">
-                <h2 className="mb-2 text-lg font-bold text-gray-900">Etkinlik Hakkında</h2>
-                <p className="leading-relaxed text-gray-600">{event.description}</p>
-              </div>
-
-              {/* Koyu Lacivert Katıl Butonu */}
-              <div className="mt-8">
-                <button className="w-full rounded-xl bg-slate-900 py-3 text-center text-lg font-bold text-white shadow-lg transition hover:bg-slate-800 shadow-slate-900/10">
+                <button className="w-full rounded-2xl bg-slate-900 py-3.5 text-center text-sm font-extrabold text-white shadow-xl hover:bg-slate-800 transition-all duration-300 shadow-slate-900/10">
                   Etkinliğe Katıl
                 </button>
               </div>
-              
             </div>
-          </>
+
+            {/* Sağ Bölüm: Afiş (Bağımsız Kart) */}
+            <div className="md:col-span-6 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col h-full overflow-hidden items-center justify-center">
+              {event.posterUrl ? (
+                <img 
+                  src={event.posterUrl} 
+                  alt={event.title} 
+                  className="w-full h-full object-cover" 
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-slate-400 gap-3 p-10">
+                  <ImageIcon className="h-14 w-14 opacity-50" />
+                  <span className="text-sm font-semibold">Afiş Bulunamadı</span>
+                </div>
+              )}
+            </div>
+          </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
