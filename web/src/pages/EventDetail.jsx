@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon, Bookmark, Loader2, AlertCircle, School } from "lucide-react";
+import { MapPin, Users, Calendar, ArrowLeft, Image as ImageIcon, Bookmark, Loader2, AlertCircle, School, CheckCircle, Clock, XCircle, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
@@ -13,6 +13,11 @@ export default function EventDetail() {
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
   const [checkingSave, setCheckingSave] = useState(true);
+
+  // Katılım Durumu
+  const [participation, setParticipation] = useState(null); // null, 'pending', 'approved', 'rejected'
+  const [checkingParticipation, setCheckingParticipation] = useState(true);
+  const [errorModal, setErrorModal] = useState({ isOpen: false, message: "" });
 
   // Etkinlik Detaylarını Yükle
   useEffect(() => {
@@ -41,7 +46,8 @@ export default function EventDetail() {
           university: data.universities?.name || "Bilinmeyen Üniversite",
           universityLogo: data.universities?.logo_url,
           organizer: data.profiles?.full_name || "Bilinmeyen Topluluk",
-          posterUrl: data.image_url
+          posterUrl: data.image_url,
+          requiresApproval: data.requires_approval
         });
       } catch (err) {
         console.error("Etkinlik detayları yüklenirken hata:", err.message);
@@ -78,6 +84,36 @@ export default function EventDetail() {
     checkIsSaved();
   }, [user, id]);
 
+  // Katılım Durumunu Kontrol Et
+  useEffect(() => {
+    async function checkParticipation() {
+      if (!user) {
+        setCheckingParticipation(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("event_participants")
+          .select("status")
+          .eq("student_id", user.id)
+          .eq("event_id", id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+          setParticipation(data.status);
+        } else {
+          setParticipation(null);
+        }
+      } catch (err) {
+        console.error("Katılım durumu kontrol hatası:", err.message);
+      } finally {
+        setCheckingParticipation(false);
+      }
+    }
+    checkParticipation();
+  }, [user, id]);
+
   const handleToggleSave = async () => {
     if (!user) {
       navigate("/login");
@@ -107,6 +143,46 @@ export default function EventDetail() {
       }
     } catch (err) {
       console.error("Favori islemi hatasi:", err.message);
+    }
+  };
+
+  const handleToggleJoin = async () => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+
+    try {
+      setCheckingParticipation(true);
+      if (participation) {
+        // Katılımı iptal et
+        const { error } = await supabase
+          .from("event_participants")
+          .delete()
+          .eq("student_id", user.id)
+          .eq("event_id", id);
+
+        if (error) throw error;
+        setParticipation(null);
+      } else {
+        // Katıl
+        const initialStatus = event?.requiresApproval ? "pending" : "approved";
+        const { error } = await supabase
+          .from("event_participants")
+          .insert({
+            student_id: user.id,
+            event_id: id,
+            status: initialStatus
+          });
+
+        if (error) throw error;
+        setParticipation(initialStatus);
+      }
+    } catch (err) {
+      console.error("Katılım işlemi hatası:", err.message);
+      setErrorModal({ isOpen: true, message: err.message });
+    } finally {
+      setCheckingParticipation(false);
     }
   };
 
@@ -217,9 +293,50 @@ export default function EventDetail() {
 
               {/* Katıl Butonu */}
               <div className="mt-8">
-                <button className="w-full rounded-2xl bg-slate-900 py-3.5 text-center text-sm font-extrabold text-white shadow-xl hover:bg-slate-800 transition-all duration-300 shadow-slate-900/10">
-                  Etkinliğe Katıl
-                </button>
+                {checkingParticipation ? (
+                  <button disabled className="w-full rounded-2xl bg-slate-100 py-3.5 text-center text-sm font-extrabold text-gray-400 flex items-center justify-center gap-2 border border-gray-200">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    Kontrol ediliyor...
+                  </button>
+                ) : participation === "approved" ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-3 rounded-xl text-sm font-bold border border-green-200 justify-center">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      Katılımcısınız (Kabul Edildi)
+                    </div>
+                    <button 
+                      onClick={handleToggleJoin}
+                      className="w-full rounded-2xl border border-red-200 bg-red-50 py-3.5 text-center text-sm font-extrabold text-red-600 hover:bg-red-100 transition-all duration-300 cursor-pointer shadow-sm"
+                    >
+                      Katılımı İptal Et
+                    </button>
+                  </div>
+                ) : participation === "pending" ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-3 rounded-xl text-sm font-bold border border-amber-200 justify-center">
+                      <Clock className="h-5 w-5 text-amber-600" />
+                      Başvurunuz Onay Bekliyor
+                    </div>
+                    <button 
+                      onClick={handleToggleJoin}
+                      className="w-full rounded-2xl border border-gray-200 bg-slate-50 py-3.5 text-center text-sm font-extrabold text-gray-600 hover:bg-slate-100 transition-all duration-300 cursor-pointer shadow-sm"
+                    >
+                      Başvuruyu Geri Çek
+                    </button>
+                  </div>
+                ) : participation === "rejected" ? (
+                  <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm font-bold border border-red-200 justify-center">
+                    <XCircle className="h-5 w-5 text-red-600" />
+                    Katılım Başvurunuz Reddedildi
+                  </div>
+                ) : (
+                  <button 
+                    onClick={handleToggleJoin}
+                    className="w-full rounded-2xl bg-slate-900 py-3.5 text-center text-sm font-extrabold text-white shadow-xl hover:bg-slate-800 transition-all duration-300 shadow-slate-900/10 cursor-pointer"
+                  >
+                    Etkinliğe Katıl
+                  </button>
+                )}
               </div>
             </div>
 
@@ -241,6 +358,43 @@ export default function EventDetail() {
           </div>
         )}
       </div>
+
+      {/* HATA MODALI */}
+      {errorModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transform transition-all">
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 mb-2">Hata Oluştu</h3>
+              <p className="text-slate-500 text-sm">
+                {(() => {
+                  const msg = errorModal.message || "";
+                  if (msg.includes("schema cache") || msg.includes("column")) {
+                    return "Sistem şu anda güncelleniyor. Lütfen birkaç saniye sonra tekrar deneyiniz.";
+                  }
+                  if (msg.includes("unique_event_student") || msg.includes("already exists")) {
+                    return "Bu etkinliğe zaten katıldınız veya başvurdunuz.";
+                  }
+                  if (msg.includes("JWT") || msg.includes("token") || msg.includes("auth")) {
+                    return "Oturumunuz geçersiz veya süresi dolmuş. Lütfen çıkış yapıp tekrar giriş yapın.";
+                  }
+                  return msg || "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.";
+                })()}
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-gray-100">
+              <button 
+                onClick={() => setErrorModal({ isOpen: false, message: "" })}
+                className="w-full px-5 py-3 text-sm font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition shadow-sm cursor-pointer"
+              >
+                Tamam, Anladım
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2, Users, School } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import ProfileDropdown from "../components/ProfileDropdown";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import { addOpenSansFont } from "../lib/OpenSans-Regular-normal.js";
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate();
@@ -19,9 +22,125 @@ export default function OrganizerDashboard() {
   const [errorModal, setErrorModal] = useState({ isOpen: false, message: "" });
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, eventId: null });
   const [viewEvent, setViewEvent] = useState(null);
+  const [manageEvent, setManageEvent] = useState(null);
+  const [participants, setParticipants] = useState([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+
+  // Katılımcıları Çek
+  useEffect(() => {
+    async function fetchParticipants() {
+      if (!manageEvent) {
+        setParticipants([]);
+        return;
+      }
+      try {
+        setLoadingParticipants(true);
+        const { data, error } = await supabase
+          .from("event_participants")
+          .select(`
+            id,
+            status,
+            joined_at,
+            profiles:student_id(id, full_name)
+          `)
+          .eq("event_id", manageEvent.id)
+          .order("joined_at", { ascending: false });
+
+        if (error) throw error;
+        setParticipants(data || []);
+      } catch (err) {
+        console.error("Katılımcılar yüklenirken hata:", err.message);
+      } finally {
+        setLoadingParticipants(false);
+      }
+    }
+    fetchParticipants();
+  }, [manageEvent]);
+
+  // Katılımcı Durumunu Güncelle (Onayla/Reddet)
+  const handleUpdateParticipantStatus = async (participantId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from("event_participants")
+        .update({ status: newStatus })
+        .eq("id", participantId);
+
+      if (error) throw error;
+
+      setParticipants(prev => {
+        const updated = prev.map(p => p.id === participantId ? { ...p, status: newStatus } : p);
+        
+        // Ana listedeki katılımcı sayılarını gerçek zamanlı güncelle
+        setMyEvents(prevEvents => 
+          prevEvents.map(ev => {
+            if (manageEvent && ev.id === manageEvent.id) {
+              return {
+                ...ev,
+                event_participants: updated.map(u => ({ status: u.status }))
+              };
+            }
+            return ev;
+          })
+        );
+        
+        return updated;
+      });
+    } catch (err) {
+      console.error("Katılımcı durumu güncellenirken hata:", err.message);
+      alert("Durum güncellenirken bir hata oluştu: " + err.message);
+    }
+  };
+
+  const generatePDF = () => {
+    if (!manageEvent) return;
+    
+    // Yüklediğimiz tam karakter setine sahip özel fontu jsPDF'e kaydediyoruz
+    addOpenSansFont();
+    
+    const doc = new jsPDF();
+    doc.setFont('OpenSans', 'normal'); // Türkçe karakter destekleyen yeni OpenSans fontunu aktifleştir
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text("KAMPÜSRADAR - ETKİNLİK KATILIMCI RAPORU", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.text(`Etkinlik: ${manageEvent.title}`, 14, 32);
+    doc.text(`Tarih: ${manageEvent.date ? new Date(manageEvent.date).toLocaleDateString('tr-TR') : "-"}`, 14, 38);
+    doc.text(`Kategori: ${manageEvent.category}`, 14, 44);
+    doc.text(`Üniversite: ${universityName || profile?.universities?.name || 'Bilinmiyor'}`, 14, 50);
+    
+    // Only approved participants
+    const approvedParticipants = participants.filter(p => p.status === 'approved');
+    
+    const tableColumn = ["#", "Öğrenci Adı Soyadı", "Katılım Durumu", "Katılım Tarihi"];
+    const tableRows = [];
+
+    approvedParticipants.forEach((p, index) => {
+      const rowData = [
+        index + 1,
+        p.profiles?.full_name || 'Bilinmeyen Öğrenci',
+        "Kabul Edildi",
+        p.joined_at ? new Date(p.joined_at).toLocaleDateString('tr-TR') : "-"
+      ];
+      tableRows.push(rowData);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 56,
+      styles: { font: 'OpenSans', fontSize: 10, cellPadding: 3 },
+      headStyles: { font: 'OpenSans', fontStyle: 'normal', fillColor: [15, 23, 42] } // slate-900
+    });
+
+    // Önizleme (yeni sekmede açma)
+    const pdfBlobUrl = doc.output('bloburl');
+    window.open(pdfBlobUrl, '_blank');
+  };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null });
+  const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
   const [universityName, setUniversityName] = useState("");
   const [universityLogo, setUniversityLogo] = useState("");
 
@@ -33,7 +152,10 @@ export default function OrganizerDashboard() {
         setLoading(true);
         const { data, error } = await supabase
           .from("events")
-          .select("*")
+          .select(`
+            *,
+            event_participants(status)
+          `)
           .eq("organizer_id", user.id)
           .order("created_at", { ascending: false });
 
@@ -131,7 +253,8 @@ export default function OrganizerDashboard() {
           image_url: finalImageUrl || null,
           university_id: profile.university_id,
           organizer_id: user.id,
-          status: "pending"
+          status: "pending",
+          requires_approval: newEvent.requires_approval
         }])
         .select();
 
@@ -143,7 +266,7 @@ export default function OrganizerDashboard() {
       if (newEvent.image_url && newEvent.image_url.startsWith('blob:')) {
         URL.revokeObjectURL(newEvent.image_url);
       }
-      setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null });
+      setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
     } catch (err) {
       console.error("Etkinlik oluşturma hatası:", err.message);
       alert("Etkinlik başvurusu gönderilirken hata oluştu: " + err.message);
@@ -535,11 +658,28 @@ export default function OrganizerDashboard() {
                 onClick={() => setViewEvent(ev)}
               >
                 <div>
-                  <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-700 font-black tracking-widest uppercase px-2 py-0.5 rounded-md">{ev.category}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-700 font-black tracking-widest uppercase px-2 py-0.5 rounded-md">{ev.category}</span>
+                    {ev.requires_approval && (
+                      <span className="text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-black tracking-widest uppercase px-2 py-0.5 rounded-md">Onay Sistemi Aktif</span>
+                    )}
+                  </div>
                   <h3 className="text-lg font-bold text-gray-900 mt-1.5">{ev.title}</h3>
                   <div className="mt-2 flex items-center gap-4 text-xs font-medium text-gray-400">
                     <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ""}</span>
                     <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {ev.location}</span>
+                  </div>
+                  
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] font-bold text-slate-600">
+                    <span className="bg-slate-150/70 px-2.5 py-1 rounded-lg border border-slate-200">
+                      Katılımcı: {ev.event_participants?.filter(p => p.status === "approved").length || 0}
+                      {ev.capacity ? ` / ${ev.capacity}` : ""}
+                    </span>
+                    {ev.requires_approval && (
+                      <span className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-100 flex items-center gap-1">
+                        Onay Bekleyen: {ev.event_participants?.filter(p => p.status === "pending").length || 0}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -566,6 +706,13 @@ export default function OrganizerDashboard() {
                       )}
                     </div>
                   )}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setManageEvent(ev); }}
+                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-200 transition"
+                    title="Katılımcıları Yönet"
+                  >
+                    <Users className="h-4 w-4" /> Yönet
+                  </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, eventId: ev.id }); }}
                     className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
@@ -658,6 +805,19 @@ export default function OrganizerDashboard() {
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                       />
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                    <input 
+                      type="checkbox" 
+                      id="requires_approval"
+                      checked={newEvent.requires_approval} 
+                      onChange={(e) => setNewEvent({...newEvent, requires_approval: e.target.checked})}
+                      className="w-4 h-4 text-slate-900 border-gray-300 rounded focus:ring-slate-900 cursor-pointer"
+                    />
+                    <label htmlFor="requires_approval" className="text-xs sm:text-sm font-bold text-gray-700 cursor-pointer select-none">
+                      Katılım Başvuruları Onay Gerektirsin (Kabul Sistemi Aktif)
+                    </label>
                   </div>
 
                   <div className="flex-1 flex flex-col">
@@ -850,6 +1010,7 @@ export default function OrganizerDashboard() {
                     <p className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">{viewEvent.description}</p>
                   </div>
                 </div>
+
               </div>
 
               {viewEvent.image_url && (
@@ -922,6 +1083,177 @@ export default function OrganizerDashboard() {
               >
                 <RefreshCw className="h-4 w-4" />
                 Beğenmedim, Yeniden Üret
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KATILIMCI YÖNETİM PANELİ (YENİ) */}
+      {manageEvent && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4 sm:p-6 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl flex flex-col h-[90vh] sm:h-[85vh] transform transition-all border border-slate-200">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-slate-900 text-white rounded-t-3xl shrink-0">
+              <div>
+                <h3 className="text-xl font-extrabold flex items-center gap-2">
+                  <Users className="h-6 w-6 text-indigo-400" />
+                  Katılımcı Yönetimi
+                </h3>
+                <p className="text-slate-400 text-sm mt-1 font-medium truncate max-w-md">{manageEvent.title}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={generatePDF}
+                  className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition"
+                >
+                  <FileText className="h-4 w-4" /> PDF Önizle
+                </button>
+                <button 
+                  onClick={() => setManageEvent(null)} 
+                  className="text-slate-400 hover:text-white bg-slate-800 rounded-full p-2 transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              {loadingParticipants ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
+                  <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                  <span className="text-sm font-semibold">Katılımcı listesi yükleniyor...</span>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  
+                  {/* Onay Bekleyenler (Eğer Kabul Sistemi Aktifse) */}
+                  {manageEvent.requires_approval && (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="bg-amber-50 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+                        <h4 className="text-sm font-extrabold text-amber-700 flex items-center gap-2">
+                          <Clock className="h-5 w-5" /> Onay Bekleyen Başvurular
+                        </h4>
+                        <span className="bg-amber-200 text-amber-800 text-xs font-black px-2.5 py-1 rounded-lg">
+                          {participants.filter(p => p.status === 'pending').length}
+                        </span>
+                      </div>
+                      
+                      {participants.filter(p => p.status === 'pending').length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 text-sm font-semibold italic">
+                          Şu anda bekleyen başvuru bulunmuyor.
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {participants.filter(p => p.status === 'pending').map(p => (
+                            <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition">
+                              <div>
+                                <span className="text-sm font-bold text-slate-800 block">{p.profiles?.full_name || 'Bilinmeyen Öğrenci'}</span>
+                                <span className="text-xs text-slate-500 mt-0.5 block">
+                                  Başvuru: {p.joined_at ? new Date(p.joined_at).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleUpdateParticipantStatus(p.id, 'approved')}
+                                  className="flex items-center gap-1.5 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                                >
+                                  <CheckCircle className="h-4 w-4" /> Onayla
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateParticipantStatus(p.id, 'rejected')}
+                                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                                >
+                                  <XCircle className="h-4 w-4" /> Reddet
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Kabul Edilenler */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="bg-green-50 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+                      <h4 className="text-sm font-extrabold text-green-700 flex items-center gap-2">
+                        <CheckCircle className="h-5 w-5" /> Katılan (Kabul Edilen) Öğrenciler
+                      </h4>
+                      <span className="bg-green-200 text-green-800 text-xs font-black px-2.5 py-1 rounded-lg">
+                        {participants.filter(p => p.status === 'approved').length}
+                      </span>
+                    </div>
+                    
+                    {participants.filter(p => p.status === 'approved').length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 text-sm font-semibold italic">
+                        Henüz katılan öğrenci bulunmuyor.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {participants.filter(p => p.status === 'approved').map((p, idx) => (
+                          <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-slate-400 w-6">{idx + 1}.</span>
+                              <div>
+                                <span className="text-sm font-bold text-slate-800 block">{p.profiles?.full_name || 'Bilinmeyen Öğrenci'}</span>
+                                <span className="text-xs text-slate-500 mt-0.5 block">
+                                  Kayıt: {p.joined_at ? new Date(p.joined_at).toLocaleString('tr-TR', { day: 'numeric', month: 'long' }) : '-'}
+                                </span>
+                              </div>
+                            </div>
+                            {manageEvent.requires_approval && (
+                              <button
+                                onClick={() => handleUpdateParticipantStatus(p.id, 'rejected')}
+                                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-red-200 transition font-bold"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Listeden Çıkar
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reddedilenler (Eğer Kabul Sistemi Aktifse) */}
+                  {manageEvent.requires_approval && participants.filter(p => p.status === 'rejected').length > 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden opacity-75">
+                      <div className="bg-slate-100 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+                        <h4 className="text-sm font-extrabold text-slate-600 flex items-center gap-2">
+                          <XCircle className="h-5 w-5" /> Reddedilen Başvurular
+                        </h4>
+                        <span className="bg-slate-300 text-slate-700 text-xs font-black px-2.5 py-1 rounded-lg">
+                          {participants.filter(p => p.status === 'rejected').length}
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {participants.filter(p => p.status === 'rejected').map(p => (
+                          <div key={p.id} className="flex items-center justify-between p-4 bg-slate-50">
+                            <span className="text-sm font-bold text-slate-600 strike-through">{p.profiles?.full_name || 'Bilinmeyen Öğrenci'}</span>
+                            <button
+                              onClick={() => handleUpdateParticipantStatus(p.id, 'approved')}
+                              className="text-xs text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200 transition font-bold"
+                            >
+                              Geri Al (Onayla)
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="px-6 py-4 bg-white border-t border-gray-100 flex justify-end shrink-0 rounded-b-3xl">
+              <button 
+                onClick={() => setManageEvent(null)}
+                className="px-6 py-2.5 text-sm font-bold bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition shadow-sm"
+              >
+                Kapat
               </button>
             </div>
           </div>
