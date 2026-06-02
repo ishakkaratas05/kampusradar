@@ -25,6 +25,11 @@ export default function OrganizerDashboard() {
   const [manageEvent, setManageEvent] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [activeTab, setActiveTab] = useState("active"); // "active" | "past"
+  const [selectedYear, setSelectedYear] = useState("all");
+  const [eventDate, setEventDate] = useState("");
+  const [eventHour, setEventHour] = useState("12");
+  const [eventMinute, setEventMinute] = useState("00");
 
   // Katılımcıları Çek
   useEffect(() => {
@@ -209,6 +214,14 @@ export default function OrganizerDashboard() {
     }
   };
 
+  const handleOpenAddModal = () => {
+    setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
+    setEventDate("");
+    setEventHour("12");
+    setEventMinute("00");
+    setIsAddModalOpen(true);
+  };
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!user || !profile) return;
@@ -242,12 +255,13 @@ export default function OrganizerDashboard() {
       }
 
       // 2. Etkinlik verisini veritabanına kaydet
+      const combinedDate = `${eventDate}T${eventHour}:${eventMinute}:00`;
       const { data, error } = await supabase
         .from("events")
         .insert([{
           title: newEvent.title,
           category: newEvent.category,
-          date: newEvent.date,
+          date: combinedDate,
           location: newEvent.location,
           description: newEvent.description,
           capacity: newEvent.capacity ? parseInt(newEvent.capacity, 10) : null,
@@ -546,11 +560,12 @@ export default function OrganizerDashboard() {
     setIsGenerating(true);
 
     try {
+      const combinedDate = eventDate ? `${eventDate}T${eventHour}:${eventMinute}:00` : "";
       // Canvas ile afiş üret
       const canvas = generateCanvasPoster(
         newEvent.title,
         newEvent.category,
-        newEvent.date,
+        combinedDate,
         newEvent.location,
         newEvent.description,
         universityName,
@@ -591,6 +606,35 @@ export default function OrganizerDashboard() {
     setAiPreview({ isOpen: false, url: "", blob: null, isLoading: false, hasError: false });
     handleAIImageGenerate();
   };
+
+  const now = new Date();
+  const pastEvents = myEvents.filter(ev => ev.date && new Date(ev.date) < now);
+  const activeEvents = myEvents.filter(ev => !ev.date || new Date(ev.date) >= now);
+
+  const pastYears = Array.from(
+    new Set(
+      pastEvents
+        .map(ev => {
+          if (!ev.date) return null;
+          try {
+            return new Date(ev.date).getFullYear().toString();
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean)
+    )
+  ).sort((a, b) => b - a);
+
+  const filteredPastEvents = selectedYear === "all"
+    ? pastEvents
+    : pastEvents.filter(ev => {
+        try {
+          return ev.date && new Date(ev.date).getFullYear().toString() === selectedYear;
+        } catch (e) {
+          return false;
+        }
+      });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
@@ -644,13 +688,13 @@ export default function OrganizerDashboard() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Etkinlik Taleplerimiz</h2>
             <p className="text-sm text-gray-500 mt-1">SKS'ye gönderilen başvurular ve onay durumları.</p>
           </div>
           <button 
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={handleOpenAddModal}
             className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-slate-800 transition cursor-pointer"
           >
             <Plus className="h-5 w-5" />
@@ -658,19 +702,87 @@ export default function OrganizerDashboard() {
           </button>
         </div>
 
+        {/* Sekmeler */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab("active")}
+            className={`py-3 px-4 sm:px-6 font-bold text-sm border-b-2 transition-all cursor-pointer ${
+              activeTab === "active"
+                ? "border-slate-900 text-slate-900 font-extrabold"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Aktif Etkinlikler ({activeEvents.length})
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("past");
+              setSelectedYear("all");
+            }}
+            className={`py-3 px-4 sm:px-6 font-bold text-sm border-b-2 transition-all cursor-pointer ${
+              activeTab === "past"
+                ? "border-slate-900 text-slate-900 font-extrabold"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Geçmiş Etkinlikler ({pastEvents.length})
+          </button>
+        </div>
+
+        {activeTab === "past" && pastEvents.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 bg-white p-4 rounded-2xl border border-gray-150 shadow-sm">
+            <span className="text-sm font-bold text-slate-700">Yıl Filtresi:</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setSelectedYear("all")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                  selectedYear === "all"
+                    ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Tümü
+              </button>
+              {pastYears.map(year => (
+                <button
+                  key={year}
+                  onClick={() => setSelectedYear(year)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                    selectedYear === year
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 bg-white rounded-2xl border border-gray-250 shadow-sm">
             <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
             <span className="text-sm font-medium">Talepler yükleniyor...</span>
           </div>
-        ) : myEvents.length === 0 ? (
+        ) : activeTab === "active" && activeEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-250 shadow-sm">
             <FileText className="h-10 w-10 mb-3 text-gray-300" />
-            <p className="text-sm font-medium">Henüz oluşturduğunuz bir etkinlik başvurusu bulunmuyor.</p>
+            <p className="text-sm font-medium">Henüz aktif bir etkinlik başvurunuz bulunmuyor.</p>
+          </div>
+        ) : activeTab === "past" && pastEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-250 shadow-sm">
+            <Calendar className="h-10 w-10 mb-3 text-gray-300" />
+            <p className="text-sm font-medium">Henüz geçmişte düzenlediğiniz bir etkinlik bulunmuyor.</p>
+          </div>
+        ) : activeTab === "past" && filteredPastEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-250 shadow-sm">
+            <Calendar className="h-10 w-10 mb-3 text-gray-300" />
+            <p className="text-sm font-medium">{selectedYear} yılında düzenlenmiş bir geçmiş etkinlik bulunmuyor.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {myEvents.map((ev) => (
+            {(activeTab === "active" ? activeEvents : filteredPastEvents).map((ev) => (
               <div 
                 key={ev.id} 
                 className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 hover:shadow-md transition cursor-pointer"
@@ -795,13 +907,46 @@ export default function OrganizerDashboard() {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Tarih / Saat</label>
-                      <input 
-                        required type="datetime-local" 
-                        step="900"
-                        value={newEvent.date} 
-                        onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
-                      />
+                      <div className="flex gap-2">
+                        {/* Tarih Seçici */}
+                        <div className="flex-1">
+                          <input 
+                            required 
+                            type="date" 
+                            value={eventDate} 
+                            onChange={(e) => setEventDate(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white"
+                          />
+                        </div>
+                        {/* Saat Seçici */}
+                        <div className="w-20">
+                          <select 
+                            value={eventHour} 
+                            onChange={(e) => setEventHour(e.target.value)}
+                            className="w-full px-2 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white appearance-none text-center font-semibold"
+                          >
+                            {Array.from({ length: 24 }).map((_, i) => {
+                              const val = i.toString().padStart(2, '0');
+                              return <option key={val} value={val}>{val}</option>;
+                            })}
+                          </select>
+                        </div>
+                        {/* İki nokta */}
+                        <div className="flex items-center text-gray-400 font-bold">:</div>
+                        {/* Dakika Seçici */}
+                        <div className="w-20">
+                          <select 
+                            value={eventMinute} 
+                            onChange={(e) => setEventMinute(e.target.value)}
+                            className="w-full px-2 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white appearance-none text-center font-semibold"
+                          >
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

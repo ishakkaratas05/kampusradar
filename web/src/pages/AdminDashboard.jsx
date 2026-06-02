@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Search, ArrowLeft, School, MapPin, X, AlertCircle, Calendar, Loader2, CheckCircle2, XCircle, ChevronDown, LogOut, LayoutDashboard } from "lucide-react"; 
+import { Plus, Trash2, Search, ArrowLeft, School, MapPin, X, AlertCircle, Calendar, Loader2, CheckCircle2, XCircle, ChevronDown, LogOut, LayoutDashboard, UploadCloud } from "lucide-react"; 
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 
@@ -67,6 +67,10 @@ export default function AdminDashboard() {
   const [uniToDelete, setUniToDelete] = useState(null);
 
   const [newUni, setNewUni] = useState({ name: "", abbreviation: "", city: "", founded: "", history: "", logo_url: "" });
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Bildirim Modalı State'i (Başarı veya Hata için)
   const [notification, setNotification] = useState({
@@ -173,6 +177,16 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleOpenAddModal = () => {
+    setNewUni({ name: "", abbreviation: "", city: "", founded: "", history: "", logo_url: "" });
+    setLogoFile(null);
+    setLogoPreview("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setIsAddModalOpen(true);
+  };
+
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -184,6 +198,30 @@ export default function AdminDashboard() {
         throw new Error("Kuruluş yılı geçerli bir sayı olmalıdır.");
       }
 
+      let finalLogoUrl = null;
+
+      // Eğer logo dosyası seçildiyse Supabase Storage'a yükle
+      if (logoFile) {
+        setUploadingLogo(true);
+        const fileExt = logoFile.name ? logoFile.name.split('.').pop() : 'png';
+        const fileName = `uni_${Math.random().toString(36).substring(2, 10)}_${Date.now()}.${fileExt}`;
+        const filePath = `universities/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(filePath, logoFile, { 
+            contentType: logoFile.type || 'image/png' 
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(filePath);
+
+        finalLogoUrl = publicUrlData.publicUrl;
+      }
+
       const { data, error } = await supabase
         .from("universities")
         .insert([{
@@ -192,7 +230,7 @@ export default function AdminDashboard() {
           city: newUni.city,
           founded: foundedYear, // Sayı olarak gönderiyoruz
           history: newUni.history,
-          logo_url: newUni.logo_url || null,
+          logo_url: finalLogoUrl || null,
         }])
         .select();
 
@@ -202,6 +240,8 @@ export default function AdminDashboard() {
       setIsAddModalOpen(false);
       const addedName = newUni.name;
       setNewUni({ name: "", abbreviation: "", city: "", founded: "", history: "", logo_url: "" }); 
+      setLogoFile(null);
+      setLogoPreview("");
       
       // Başarı modalını tetikle
       showSuccess("Kayıt Başarılı", `${addedName} başarıyla sisteme eklendi.`);
@@ -214,6 +254,7 @@ export default function AdminDashboard() {
       );
     } finally {
       setSaving(false);
+      setUploadingLogo(false);
     }
   };
 
@@ -342,7 +383,7 @@ export default function AdminDashboard() {
             </p>
           </div>
           <button 
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={handleOpenAddModal}
             className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-slate-800 transition cursor-pointer"
           >
             <Plus className="h-5 w-5" />
@@ -507,15 +548,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Logo URL (Opsiyonel)</label>
-                <input 
-                  type="url" placeholder="Örn: https://example.com/logo.png"
-                  value={newUni.logo_url} 
-                  onChange={(e) => setNewUni({...newUni, logo_url: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
-                />
-              </div>
+
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Tarihçe / Açıklama</label>
@@ -524,6 +557,45 @@ export default function AdminDashboard() {
                   value={newUni.history} onChange={(e) => setNewUni({...newUni, history: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none text-sm"
                 ></textarea>
+              </div>
+
+              {/* Logo Yükleme Alanı */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Üniversite Logosu (Opsiyonel)</label>
+                <div 
+                  onClick={() => fileInputRef.current.click()}
+                  className="border-2 border-dashed border-gray-200 hover:border-slate-400 rounded-xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition bg-slate-50/50 hover:bg-slate-50"
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        setLogoFile(file);
+                        setLogoPreview(URL.createObjectURL(file));
+                      }
+                    }}
+                  />
+                  {logoPreview ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-16 w-16 bg-white border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center p-1 shadow-sm">
+                        <img src={logoPreview} alt="Logo Önizleme" className="h-full w-full object-contain" />
+                      </div>
+                      <span className="text-xs text-gray-500 font-semibold truncate max-w-[200px]">{logoFile?.name}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-8 w-8 text-gray-400" />
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-700">Logo Yüklemek İçin Tıklayın</p>
+                        <p className="text-[11px] text-gray-400 font-medium mt-0.5">Önerilen boyut: 512x512 px (PNG/JPG)</p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               
               <div className="mt-4 flex justify-end gap-3">
