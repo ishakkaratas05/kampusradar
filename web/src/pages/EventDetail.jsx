@@ -166,17 +166,29 @@ export default function EventDetail() {
         setParticipation(null);
       } else {
         // Katıl
-        const initialStatus = event?.requiresApproval ? "pending" : "approved";
-        const { error } = await supabase
+        // Garanti olması için anlık olarak etkinlik onay gerektiriyor mu DB'den teyit edelim
+        const { data: currentEvent } = await supabase
+          .from("events")
+          .select("requires_approval")
+          .eq("id", id)
+          .maybeSingle();
+          
+        const isApprovalRequired = currentEvent ? currentEvent.requires_approval : (event?.requiresApproval || event?.requires_approval);
+        const initialStatus = isApprovalRequired ? "pending" : "approved";
+
+        const { data: insertedData, error } = await supabase
           .from("event_participants")
           .insert({
             student_id: user.id,
             event_id: id,
             status: initialStatus
-          });
+          })
+          .select()
+          .single();
 
         if (error) throw error;
-        setParticipation(initialStatus);
+        // Veritabanının kaydettiği kesin sonucu state'e ata
+        setParticipation(insertedData.status);
       }
     } catch (err) {
       console.error("Katılım işlemi hatası:", err.message);

@@ -13,7 +13,10 @@ import {
   Calendar, 
   MapPin, 
   ArrowRight,
-  Loader2 
+  Loader2,
+  CheckCircle,
+  Clock,
+  XCircle
 } from "lucide-react";
 
 export default function Profile() {
@@ -26,6 +29,13 @@ export default function Profile() {
   // Saved Events State
   const [savedEvents, setSavedEvents] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
+
+  // Joined Events State
+  const [joinedEvents, setJoinedEvents] = useState([]);
+  const [loadingJoinedEvents, setLoadingJoinedEvents] = useState(true);
+
+  // Active Tab State ('joined' or 'saved')
+  const [activeTab, setActiveTab] = useState("joined");
 
   // Sayfa açıldığında giriş kontrolü
   useEffect(() => {
@@ -94,7 +104,7 @@ export default function Profile() {
           title: item.events.title,
           description: item.events.description,
           category: item.events.category,
-          date: item.events.date,
+          date: item.events.date ? new Date(item.events.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
           location: item.events.location,
           university: item.events.universities?.name || "Belirtilmemiş"
         }));
@@ -107,8 +117,58 @@ export default function Profile() {
     }
   };
 
+  // Katıldığım Etkinlikleri Çek
+  const fetchJoinedEvents = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("event_participants")
+        .select(`
+          id,
+          status,
+          event_id,
+          events (
+            id,
+            title,
+            description,
+            category,
+            date,
+            location,
+            status,
+            universities (
+              name
+            )
+          )
+        `)
+        .eq("student_id", user.id);
+
+      if (error) throw error;
+
+      const formatted = (data || [])
+        .filter(item => item.events) 
+        .map(item => ({
+          participantId: item.id,
+          status: item.status,
+          id: item.events.id,
+          title: item.events.title,
+          description: item.events.description,
+          category: item.events.category,
+          date: item.events.date ? new Date(item.events.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          location: item.events.location,
+          university: item.events.universities?.name || "Belirtilmemiş"
+        }));
+
+      setJoinedEvents(formatted);
+    } catch (err) {
+      console.error("Katılınan etkinlikler çekilirken hata:", err.message);
+    } finally {
+      setLoadingJoinedEvents(false);
+    }
+  };
+
   useEffect(() => {
     fetchSavedEvents();
+    fetchJoinedEvents();
   }, [user]);
 
   // Favoriden Çıkar
@@ -124,6 +184,22 @@ export default function Profile() {
       setSavedEvents(prev => prev.filter(item => item.savedId !== savedId));
     } catch (err) {
       console.error("Favori silme hatası:", err.message);
+    }
+  };
+
+  // Katılımı İptal Et / Başvuruyu Geri Çek
+  const handleCancelParticipation = async (e, participantId) => {
+    e.stopPropagation(); // Kart tıklamasını önle
+    try {
+      const { error } = await supabase
+        .from("event_participants")
+        .delete()
+        .eq("id", participantId);
+
+      if (error) throw error;
+      setJoinedEvents(prev => prev.filter(item => item.participantId !== participantId));
+    } catch (err) {
+      console.error("Katılım iptal etme hatası:", err.message);
     }
   };
 
@@ -221,86 +297,196 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Sağ Kolon: Kaydedilen Etkinlikler (Sadece Öğrenciler İçin) */}
+          {/* Sağ Kolon: Kaydedilen ve Katıldığım Etkinlikler Sekmeli Görünüm (Sadece Öğrenciler İçin) */}
           {profile?.role === "student" && (
             <div className="lg:col-span-2">
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 min-h-[400px] flex flex-col">
-              
-              <div className="mb-6 flex items-center justify-between border-b border-gray-100 pb-4">
-                <div className="flex items-center gap-2 text-slate-900">
-                  <Bookmark className="h-5 w-5 fill-slate-900 text-slate-900" />
-                  <h3 className="text-lg font-bold">Kaydettiğim Etkinlikler</h3>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                  {savedEvents.length} Etkinlik
-                </span>
-              </div>
-
-              {loadingEvents ? (
-                <div className="flex flex-1 items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 text-slate-900 animate-spin" />
-                </div>
-              ) : savedEvents.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center text-center py-12 px-4">
-                  <Bookmark className="h-12 w-12 text-gray-300 mb-3" />
-                  <h4 className="text-base font-bold text-gray-800 mb-1">Henüz Kaydedilen Etkinlik Yok</h4>
-                  <p className="text-sm text-gray-500 max-w-sm mb-6">
-                    Kampüsünüzdeki etkinlikleri inceleyip dilediklerinizi favorilerinize ekleyebilirsiniz.
-                  </p>
-                  <button 
-                    onClick={() => navigate("/home")}
-                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 cursor-pointer shadow-md shadow-slate-900/10"
-                  >
-                    Etkinlikleri Keşfet
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {savedEvents.map((item) => (
-                    <div 
-                      key={item.savedId}
-                      onClick={() => navigate(`/event/${item.id}`)}
-                      className="group relative flex flex-col sm:flex-row justify-between items-start sm:items-center rounded-xl border border-gray-100 bg-white p-4 gap-4 shadow-sm transition hover:shadow-md hover:border-gray-200 cursor-pointer"
+              <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 min-h-[400px] flex flex-col">
+                
+                {/* Sekme Butonları */}
+                <div className="mb-6 flex border-b border-gray-150">
+                  <div className="flex gap-6">
+                    <button
+                      onClick={() => setActiveTab("joined")}
+                      className={`pb-3 text-base font-bold transition-all relative cursor-pointer ${
+                        activeTab === "joined" 
+                          ? "text-slate-900 border-b-2 border-slate-900" 
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800 uppercase tracking-wider mb-2">
-                          {item.category}
+                      <span className="flex items-center gap-2">
+                        <CheckCircle className={`h-5 w-5 ${activeTab === "joined" ? "text-slate-900" : "text-gray-405"}`} />
+                        Katıldığım Etkinlikler
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                          activeTab === "joined" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {joinedEvents.length}
                         </span>
-                        <h4 className="text-base font-bold text-gray-900 truncate group-hover:text-blue-600 transition">
-                          {item.title}
-                        </h4>
-                        
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 font-medium">
-                          <span className="flex items-center gap-1">
-                            <School className="h-3.5 w-3.5 text-blue-500" />
-                            {item.university}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5" />
-                            {item.date}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5 text-red-500" />
-                            {item.location}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={(e) => handleRemoveSave(e, item.savedId)}
-                        className="text-gray-400 hover:text-red-500 transition cursor-pointer p-2 rounded-lg hover:bg-red-50 shrink-0 self-end sm:self-center"
-                        title="Favorilerden Kaldır"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-                  ))}
+                      </span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setActiveTab("saved")}
+                      className={`pb-3 text-base font-bold transition-all relative cursor-pointer ${
+                        activeTab === "saved" 
+                          ? "text-slate-900 border-b-2 border-slate-900" 
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Bookmark className={`h-5 w-5 ${activeTab === "saved" ? "fill-slate-900 text-slate-900" : "text-gray-405"}`} />
+                        Kaydettiğim Etkinlikler
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors ${
+                          activeTab === "saved" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {savedEvents.length}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
-              )}
 
+                {/* Sekme İçerikleri */}
+                {activeTab === "joined" ? (
+                  <div className="flex-1 flex flex-col">
+                    {loadingJoinedEvents ? (
+                      <div className="flex flex-1 items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 text-slate-900 animate-spin" />
+                      </div>
+                    ) : joinedEvents.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center text-center py-12 px-4">
+                        <Calendar className="h-12 w-12 text-gray-300 mb-3" />
+                        <h4 className="text-base font-bold text-gray-800 mb-1">Henüz Katıldığınız Etkinlik Yok</h4>
+                        <p className="text-sm text-gray-500 max-w-sm mb-6">
+                          Kampüsünüzdeki etkinlikleri inceleyip dilediğinize katılım talebi gönderebilirsiniz.
+                        </p>
+                        <button 
+                          onClick={() => navigate("/home")}
+                          className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 cursor-pointer shadow-md shadow-slate-900/10"
+                        >
+                          Etkinlikleri Keşfet
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {joinedEvents.map((item) => (
+                          <div 
+                            key={item.participantId}
+                            onClick={() => navigate(`/event/${item.id}`)}
+                            className="group relative flex flex-col sm:flex-row justify-between items-start sm:items-center rounded-xl border border-gray-100 bg-white p-4 gap-4 shadow-sm transition hover:shadow-md hover:border-gray-200 cursor-pointer"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800 uppercase tracking-wider">
+                                  {item.category}
+                                </span>
+                                {item.status === "approved" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-green-50 border border-green-200 px-2 py-0.5 text-[10px] font-bold text-green-700">
+                                    <CheckCircle className="h-3 w-3" /> Kabul Edildi
+                                  </span>
+                                ) : item.status === "pending" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                                    <Clock className="h-3 w-3" /> Onay Bekliyor
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                    <XCircle className="h-3 w-3" /> Reddedildi
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="text-base font-bold text-gray-900 truncate group-hover:text-blue-600 transition">
+                                {item.title}
+                              </h4>
+                              
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 font-medium">
+                                <span className="flex items-center gap-1">
+                                  <School className="h-3.5 w-3.5 text-blue-500" />
+                                  {item.university}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  {item.date}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3.5 w-3.5 text-red-500" />
+                                  {item.location}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col">
+                    {loadingEvents ? (
+                      <div className="flex flex-1 items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 text-slate-900 animate-spin" />
+                      </div>
+                    ) : savedEvents.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center text-center py-12 px-4">
+                        <Bookmark className="h-12 w-12 text-gray-300 mb-3" />
+                        <h4 className="text-base font-bold text-gray-800 mb-1">Henüz Kaydedilen Etkinlik Yok</h4>
+                        <p className="text-sm text-gray-500 max-w-sm mb-6">
+                          Kampüsünüzdeki etkinlikleri inceleyip dilediklerinizi favorilerinize ekleyebilirsiniz.
+                        </p>
+                        <button 
+                          onClick={() => navigate("/home")}
+                          className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 cursor-pointer shadow-md shadow-slate-900/10"
+                        >
+                          Etkinlikleri Keşfet
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {savedEvents.map((item) => (
+                          <div 
+                            key={item.savedId}
+                            onClick={() => navigate(`/event/${item.id}`)}
+                            className="group relative flex flex-col sm:flex-row justify-between items-start sm:items-center rounded-xl border border-gray-100 bg-white p-4 gap-4 shadow-sm transition hover:shadow-md hover:border-gray-200 cursor-pointer"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800 uppercase tracking-wider mb-2">
+                                {item.category}
+                              </span>
+                              <h4 className="text-base font-bold text-gray-900 truncate group-hover:text-blue-600 transition">
+                                {item.title}
+                              </h4>
+                              
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 font-medium">
+                                <span className="flex items-center gap-1">
+                                  <School className="h-3.5 w-3.5 text-blue-500" />
+                                  {item.university}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  {item.date}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3.5 w-3.5 text-red-500" />
+                                  {item.location}
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={(e) => handleRemoveSave(e, item.savedId)}
+                              className="text-gray-400 hover:text-red-500 transition cursor-pointer p-2 rounded-lg hover:bg-red-50 shrink-0 self-end sm:self-center"
+                              title="Favorilerden Kaldır"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
-          </div>
           )}
 
         </div>
