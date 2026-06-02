@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2, Users, School } from "lucide-react";
+import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2, Users, School, BadgeCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import ProfileDropdown from "../components/ProfileDropdown";
@@ -143,6 +143,7 @@ export default function OrganizerDashboard() {
   const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
   const [universityName, setUniversityName] = useState("");
   const [universityLogo, setUniversityLogo] = useState("");
+
 
   // Etkinlikleri Yükle
   useEffect(() => {
@@ -625,6 +626,24 @@ export default function OrganizerDashboard() {
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
         
+        {/* Topluluk Profili Alanı */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-8 flex items-center gap-5">
+          <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full border-4 border-slate-50 bg-slate-100 overflow-hidden shadow-inner flex items-center justify-center shrink-0">
+            {profile?.logo_url ? (
+              <img src={profile.logo_url} alt="Topluluk Logosu" className="h-full w-full object-cover" />
+            ) : (
+              <Users className="h-8 w-8 text-slate-300" />
+            )}
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{profile?.full_name || "Organizatör Topluluğu"}</h2>
+            <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-bold tracking-widest uppercase rounded-md border border-indigo-100">
+              <BadgeCheck className="h-3.5 w-3.5 text-indigo-600" />
+              Organizatör
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Etkinlik Taleplerimiz</h2>

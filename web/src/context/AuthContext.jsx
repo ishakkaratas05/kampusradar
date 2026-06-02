@@ -17,12 +17,27 @@ export const AuthProvider = ({ children }) => {
       .select("*")
       .eq("id", userId)
       .single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("Profil yüklenemedi:", error.message);
+      .then(async ({ data: profileData, error: profileError }) => {
+        if (profileError) {
+          console.warn("Profil yüklenemedi:", profileError.message);
           setProfile(null);
         } else {
-          setProfile(data);
+          if (profileData && profileData.university_id) {
+            try {
+              const { data: uniData, error: uniError } = await supabase
+                .from("universities")
+                .select("logo_url")
+                .eq("id", profileData.university_id)
+                .single();
+              
+              if (!uniError && uniData) {
+                profileData.university_logo_url = uniData.logo_url;
+              }
+            } catch (uniErr) {
+              console.warn("Üniversite logosu çekilemedi:", uniErr.message);
+            }
+          }
+          setProfile(profileData);
         }
       })
       .catch((err) => {
@@ -103,7 +118,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut, signUp }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut, signUp, fetchProfile: () => user && fetchProfile(user.id) }}>
       {children}
     </AuthContext.Provider>
   );

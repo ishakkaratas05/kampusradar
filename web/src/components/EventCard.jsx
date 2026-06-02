@@ -52,7 +52,11 @@ export default function EventCard({ event, isSaved = false, onToggleSave = null 
           <span className="text-gray-800">{event.university}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Users className="h-4 w-4 text-gray-400" />
+          {event.organizerLogo ? (
+            <img src={event.organizerLogo} alt={event.organizer} className="h-4 w-4 object-cover rounded-full border border-gray-200" />
+          ) : (
+            <Users className="h-4 w-4 text-gray-400" />
+          )}
           <span>{event.organizer}</span>
         </div>
       </div>

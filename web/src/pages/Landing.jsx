@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, School, MapPin, Calendar, Info, ChevronDown, LogOut, LayoutDashboard } from "lucide-react";
+import { ArrowRight, School, MapPin, Calendar, Info, ChevronDown, LogOut, LayoutDashboard, Loader2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import ProfileDropdown from "../components/ProfileDropdown";
+import { supabase } from "../lib/supabaseClient";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -30,7 +31,30 @@ export default function Landing() {
   const [universities, setUniversities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // DropdownRef removed as it is now in ProfileDropdown
+  
+  const [selectedUni, setSelectedUni] = useState(null);
+  const [uniClubs, setUniClubs] = useState([]);
+  const [loadingClubs, setLoadingClubs] = useState(false);
+
+  const handleUniversityClick = async (uni) => {
+    setSelectedUni(uni);
+    setLoadingClubs(true);
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, logo_url")
+        .eq("role", "organizer")
+        .eq("university_id", uni.id)
+        .order("full_name", { ascending: true });
+
+      if (error) throw error;
+      setUniClubs(data || []);
+    } catch (err) {
+      console.error("Topluluklar yüklenirken hata:", err.message);
+    } finally {
+      setLoadingClubs(false);
+    }
+  };
 
   // Üniversiteleri çek (AuthContext'ten bağımsız raw fetch)
   useEffect(() => {
@@ -169,7 +193,12 @@ export default function Landing() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {universities.map((uni) => (
-              <div key={uni.id} className="group flex flex-col sm:flex-row bg-white rounded-2xl border border-gray-100 p-5 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1 duration-300 gap-5 items-center sm:items-start w-full">
+              <div 
+                key={uni.id} 
+                onClick={() => handleUniversityClick(uni)}
+                className="group flex flex-col sm:flex-row bg-white rounded-2xl border border-gray-100 p-5 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1 hover:border-slate-300 hover:bg-slate-50/20 cursor-pointer duration-300 gap-5 items-center sm:items-start w-full"
+                title={`${uni.name} Topluluklarını Gör`}
+              >
                 {/* Logo */}
                 <div className="flex flex-col items-center justify-center w-24 h-24 sm:w-28 sm:h-28 shrink-0 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
                   {uni.logo_url ? (
@@ -271,6 +300,99 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* ── ÜNİVERSİTE DETAY & TOPLULUKLAR TAM SAYFA GÖRÜNÜMÜ ── */}
+      {selectedUni && (
+        <div className="fixed inset-0 bg-gray-50 overflow-y-auto z-[60] animate-in fade-in slide-in-from-right duration-300">
+          {/* Header */}
+          <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 shadow-sm flex items-center justify-between text-white sticky top-0 z-50">
+            <button 
+              onClick={() => {
+                setSelectedUni(null);
+                setUniClubs([]);
+              }}
+              className="flex items-center gap-2 text-sm font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl transition cursor-pointer shadow-sm"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" /> Geri Dön
+            </button>
+            <span className="text-lg font-extrabold tracking-tight truncate max-w-xs sm:max-w-md">
+              {selectedUni.name}
+            </span>
+            <div className="w-24"></div> {/* Centering spacing spacer */}
+          </header>
+
+          <main className="max-w-4xl mx-auto px-4 py-12">
+            {/* Üst Kart: Üniversite Detayları */}
+            <div className="bg-white rounded-3xl border border-gray-100 p-6 sm:p-8 shadow-sm flex flex-col md:flex-row gap-8 items-center md:items-start mb-12">
+              <div className="w-32 h-32 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden flex items-center justify-center p-2 shrink-0 shadow-inner">
+                {selectedUni.logo_url ? (
+                  <img src={selectedUni.logo_url} alt={selectedUni.name} className="w-full h-full object-contain" />
+                ) : (
+                  <School className="h-16 w-16 text-slate-400" />
+                )}
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <h2 className="text-3xl font-extrabold text-gray-950 leading-tight">{selectedUni.name}</h2>
+                <div className="mt-3 flex flex-wrap justify-center md:justify-start gap-2.5 text-xs font-bold uppercase tracking-wider">
+                  <span className="flex items-center gap-1 bg-red-50 text-red-700 px-3 py-1.5 rounded-lg border border-red-100 shadow-sm">
+                    <MapPin className="h-4 w-4" /> {selectedUni.city}
+                  </span>
+                  <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-100 shadow-sm">
+                    <Calendar className="h-4 w-4" /> Kuruluş: {selectedUni.founded}
+                  </span>
+                </div>
+                <p className="mt-6 text-sm text-gray-600 leading-relaxed text-left">
+                  {selectedUni.history}
+                </p>
+              </div>
+            </div>
+
+            {/* Alt Kısım: Öğrenci Toplulukları / Kulüpler */}
+            <div>
+              <div className="mb-8 border-b border-gray-200 pb-4">
+                <h3 className="text-2xl font-extrabold text-gray-950">Öğrenci Toplulukları / Kulüpler</h3>
+                <p className="text-sm text-gray-500 mt-1">Bu üniversite bünyesinde etkinlik düzenleyen aktif topluluklar.</p>
+              </div>
+
+              {loadingClubs ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+                  <span className="text-sm font-semibold">Topluluklar yükleniyor...</span>
+                </div>
+              ) : uniClubs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                  <School className="h-12 w-12 text-slate-300 mb-3" />
+                  <p className="text-sm font-semibold">Bu üniversitede henüz kayıtlı bir öğrenci topluluğu bulunmuyor.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {uniClubs.map((club) => (
+                    <div 
+                      key={club.id} 
+                      className="bg-white rounded-2xl border border-gray-150 p-5 shadow-sm flex items-center gap-4 hover:border-slate-350 hover:shadow-md transition duration-200"
+                    >
+                      <div className="h-16 w-16 rounded-full border border-gray-250 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                        {club.logo_url ? (
+                          <img src={club.logo_url} alt={club.full_name} className="h-full w-full object-cover" />
+                        ) : (
+                          <Users className="h-8 w-8 text-slate-300" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-base font-extrabold text-gray-950 truncate leading-snug">{club.full_name}</h4>
+                        <p className="text-xs text-gray-500 mt-1 truncate font-medium">{club.email}</p>
+                        <span className="inline-block mt-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-extrabold tracking-widest uppercase rounded border border-indigo-100">
+                          Aktif Topluluk
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      )}
 
     </div>
   );

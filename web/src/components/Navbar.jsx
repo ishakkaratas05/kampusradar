@@ -15,8 +15,9 @@ export default function Navbar() {
       
       {/* Sol Taraf: Beyaz SVG Logo ve Başlık */}
       <div 
-        onClick={() => navigate("/home")} 
+        onClick={() => navigate("/")} 
         className="cursor-pointer flex items-center gap-3 hover:opacity-90 transition"
+        title="Tanıtım Sayfasına Git"
       >
         <img 
           src="/logo.svg" 

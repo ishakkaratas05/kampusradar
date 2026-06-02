@@ -13,6 +13,8 @@ export default function Home() {
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [savedEventIds, setSavedEventIds] = useState([]);
   const [universityInfo, setUniversityInfo] = useState(null);
+  const [communities, setCommunities] = useState([]);
+  const [selectedCommunityId, setSelectedCommunityId] = useState("");
 
   const isUUID = (id) => {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
@@ -28,7 +30,7 @@ export default function Home() {
           .select(`
             *,
             universities(name, logo_url),
-            profiles:organizer_id(full_name)
+            profiles:organizer_id(full_name, logo_url)
           `)
           .eq("status", "approved")
           .order("date", { ascending: true });
@@ -61,6 +63,8 @@ export default function Home() {
           university: ev.universities?.name || "Bilinmeyen Üniversite",
           universityLogo: ev.universities?.logo_url,
           organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
+          organizerLogo: ev.profiles?.logo_url,
+          organizerId: ev.organizer_id,
           imageUrl: ev.image_url
         }));
 
@@ -74,6 +78,29 @@ export default function Home() {
     // Profil hazır olana kadar bekle, böylece doğru üniversiteye göre filtreleyebiliriz
     if (profile !== undefined) {
       loadEvents();
+    }
+  }, [profile]);
+
+  // Üniversiteye ait toplulukları çek
+  useEffect(() => {
+    async function loadCommunities() {
+      if (!profile?.university_id) return;
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .eq("role", "organizer")
+          .eq("university_id", profile.university_id)
+          .order("full_name", { ascending: true });
+
+        if (error) throw error;
+        setCommunities(data || []);
+      } catch (err) {
+        console.error("Topluluklar yüklenirken hata:", err.message);
+      }
+    }
+    if (profile !== undefined) {
+      loadCommunities();
     }
   }, [profile]);
 
@@ -159,7 +186,7 @@ export default function Home() {
       <Navbar />
 
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-5">
           <div className="flex items-center gap-3">
             {universityInfo?.logo_url && (
               <div className="h-12 w-12 bg-white rounded-xl border border-gray-200 p-1.5 flex items-center justify-center shadow-sm shrink-0">
@@ -173,6 +200,22 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          {/* Topluluk Filtresi */}
+          <div className="shrink-0">
+            <select
+              value={selectedCommunityId}
+              onChange={(e) => setSelectedCommunityId(e.target.value)}
+              className="w-full sm:w-56 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-500"
+            >
+              <option value="">Tüm Topluluklar</option>
+              {communities.map((club) => (
+                <option key={club.id} value={club.id}>
+                  {club.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {loadingEvents ? (
@@ -180,14 +223,18 @@ export default function Home() {
             <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
             <span className="text-sm font-medium">Etkinlikler yükleniyor...</span>
           </div>
-        ) : events.length === 0 ? (
+        ) : (selectedCommunityId === "" ? events : events.filter(e => e.organizerId === selectedCommunityId)).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-150 shadow-sm">
             <Calendar className="h-10 w-10 mb-3 text-gray-300" />
-            <p className="text-sm font-medium">Henüz kampüsünüzde onaylanmış bir etkinlik bulunmuyor.</p>
+            <p className="text-sm font-medium">
+              {selectedCommunityId === "" 
+                ? "Henüz kampüsünüzde onaylanmış bir etkinlik bulunmuyor." 
+                : "Bu topluluğa ait aktif bir etkinlik bulunamadı."}
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {events.map((event) => (
+            {(selectedCommunityId === "" ? events : events.filter(e => e.organizerId === selectedCommunityId)).map((event) => (
               <EventCard 
                 key={event.id} 
                 event={event} 

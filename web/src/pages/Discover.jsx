@@ -50,7 +50,7 @@ export default function Discover() {
           .select(`
             *,
             universities(name, logo_url),
-            profiles:organizer_id(full_name)
+            profiles:organizer_id(full_name, logo_url)
           `)
           .eq("status", "approved")
           .order("date", { ascending: true });
@@ -68,6 +68,7 @@ export default function Discover() {
           universityLogo: ev.universities?.logo_url,
           universityId: ev.university_id,
           organizer: ev.profiles?.full_name || "Bilinmeyen Topluluk",
+          organizerLogo: ev.profiles?.logo_url,
           imageUrl: ev.image_url
         }));
 

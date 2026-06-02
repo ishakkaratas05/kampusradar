@@ -29,7 +29,7 @@ export default function EventDetail() {
           .select(`
             *,
             universities(name, logo_url),
-            profiles:organizer_id(full_name)
+            profiles:organizer_id(full_name, logo_url)
           `)
           .eq("id", id)
           .single();
@@ -46,6 +46,7 @@ export default function EventDetail() {
           university: data.universities?.name || "Bilinmeyen Üniversite",
           universityLogo: data.universities?.logo_url,
           organizer: data.profiles?.full_name || "Bilinmeyen Topluluk",
+          organizerLogo: data.profiles?.logo_url,
           posterUrl: data.image_url,
           requiresApproval: data.requires_approval
         });
@@ -263,9 +264,15 @@ export default function EventDetail() {
                 {/* İkonlu Detay Kutuları */}
                 <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-gray-100 bg-slate-50/50 p-5">
                   <div className="flex items-center gap-3.5 text-gray-700">
-                    <div className="rounded-xl bg-slate-200/70 p-2.5 text-slate-900">
-                      <Users className="h-5 w-5" />
-                    </div>
+                    {event.organizerLogo ? (
+                      <div className="h-10 w-10 rounded-xl overflow-hidden shadow-sm shrink-0">
+                        <img src={event.organizerLogo} alt={event.organizer} className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-slate-200/70 p-2.5 text-slate-900 shrink-0">
+                        <Users className="h-5 w-5" />
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs font-semibold text-gray-400">Düzenleyen</p>
                       <p className="font-bold text-gray-900 text-sm mt-0.5">{event.organizer}</p>

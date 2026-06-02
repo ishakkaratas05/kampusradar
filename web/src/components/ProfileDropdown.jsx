@@ -81,8 +81,14 @@ export default function ProfileDropdown() {
             {roleLabels[profile?.role] || "Kullanıcı"}
           </span>
         </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900 font-bold text-sm shadow-sm uppercase shrink-0">
-          {getInitials(profile?.full_name, user.email)}
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900 font-bold text-sm shadow-sm uppercase shrink-0 overflow-hidden">
+          {profile?.role === "sks" && profile?.university_logo_url ? (
+            <img src={profile.university_logo_url} alt="Üniversite Logosu" className="h-full w-full object-cover" />
+          ) : profile?.logo_url ? (
+            <img src={profile.logo_url} alt="Profil Logosu" className="h-full w-full object-cover" />
+          ) : (
+            getInitials(profile?.full_name, user.email)
+          )}
         </div>
         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
       </button>
