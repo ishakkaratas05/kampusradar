@@ -161,6 +161,7 @@ export default function OrganizerDashboard() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
+  const [customCategory, setCustomCategory] = useState("");
   const [universityName, setUniversityName] = useState("");
   const [universityLogo, setUniversityLogo] = useState("");
 
@@ -231,6 +232,7 @@ export default function OrganizerDashboard() {
 
   const handleOpenAddModal = () => {
     setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
+    setCustomCategory("");
     setEventDate("");
     setEventTime("12:00");
     setEventEndTime("");
@@ -271,11 +273,24 @@ export default function OrganizerDashboard() {
 
       if (!isValidTime(eventTime)) {
         setErrorModal({ isOpen: true, message: "Lütfen geçerli bir saat girin (Örn: 14:30)." });
+        setSubmitting(false);
         return;
       }
       if (eventEndTime && !isValidTime(eventEndTime)) {
         setErrorModal({ isOpen: true, message: "Lütfen geçerli bir bitiş saati girin (Örn: 16:00)." });
+        setSubmitting(false);
         return;
+      }
+
+      // Eğer kategori "Diğer" ise ve özel kategori girilmişse onu kullan
+      let finalCategory = newEvent.category;
+      if (newEvent.category === "Diğer") {
+        if (!customCategory.trim()) {
+          setErrorModal({ isOpen: true, message: "Lütfen özel kategori adını girin." });
+          setSubmitting(false);
+          return;
+        }
+        finalCategory = customCategory.trim();
       }
 
       // Eğer bitiş saati varsa, açıklamaya ekle
@@ -289,7 +304,7 @@ export default function OrganizerDashboard() {
         .from("events")
         .insert([{
           title: newEvent.title,
-          category: newEvent.category,
+          category: finalCategory,
           date: combinedDate,
           location: newEvent.location,
           description: finalDescription,
@@ -311,6 +326,7 @@ export default function OrganizerDashboard() {
         URL.revokeObjectURL(newEvent.image_url);
       }
       setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
+      setCustomCategory("");
     } catch (err) {
       console.error("Etkinlik oluşturma hatası:", err.message);
       alert("Etkinlik başvurusu gönderilirken hata oluştu: " + err.message);
@@ -930,7 +946,12 @@ export default function OrganizerDashboard() {
                       <select 
                         required
                         value={newEvent.category} 
-                        onChange={(e) => setNewEvent({...newEvent, category: e.target.value})}
+                        onChange={(e) => {
+                          setNewEvent({...newEvent, category: e.target.value});
+                          if (e.target.value !== "Diğer") {
+                            setCustomCategory("");
+                          }
+                        }}
                         className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white appearance-none"
                       >
                         <option value="" disabled>Seçiniz</option>
@@ -941,8 +962,21 @@ export default function OrganizerDashboard() {
                         <option value="Spor / Turnuva">Spor / Turnuva</option>
                         <option value="Tiyatro / Gösteri">Tiyatro / Gösteri</option>
                         <option value="Sosyal Sorumluluk">Sosyal Sorumluluk</option>
-                        <option value="Diğer">Diğer</option>
+                        <option value="Yarışma">Yarışma</option>
+                        <option value="Diğer">Diğer (Elle Yaz)</option>
                       </select>
+                      {newEvent.category === "Diğer" && (
+                        <div className="mt-2">
+                          <input 
+                            required
+                            type="text" 
+                            placeholder="Kategori adını yazınız..."
+                            value={customCategory} 
+                            onChange={(e) => setCustomCategory(e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Tarih / Saat</label>
