@@ -28,8 +28,23 @@ export default function OrganizerDashboard() {
   const [activeTab, setActiveTab] = useState("active"); // "active" | "past"
   const [selectedYear, setSelectedYear] = useState("all");
   const [eventDate, setEventDate] = useState("");
-  const [eventHour, setEventHour] = useState("12");
-  const [eventMinute, setEventMinute] = useState("00");
+  const [eventTime, setEventTime] = useState("12:00");
+  const [eventEndTime, setEventEndTime] = useState("");
+
+  const isValidTime = (timeStr) => {
+    const regex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    return regex.test(timeStr);
+  };
+
+  const handleTimeChange = (e, setter) => {
+    let val = e.target.value.replace(/[^0-9]/g, "");
+    if (val.length > 4) val = val.slice(0, 4);
+    
+    if (val.length > 2) {
+      val = val.slice(0, 2) + ":" + val.slice(2);
+    }
+    setter(val);
+  };
 
   // Katılımcıları Çek
   useEffect(() => {
@@ -217,8 +232,8 @@ export default function OrganizerDashboard() {
   const handleOpenAddModal = () => {
     setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
     setEventDate("");
-    setEventHour("12");
-    setEventMinute("00");
+    setEventTime("12:00");
+    setEventEndTime("");
     setIsAddModalOpen(true);
   };
 
@@ -254,8 +269,22 @@ export default function OrganizerDashboard() {
         finalImageUrl = null;
       }
 
+      if (!isValidTime(eventTime)) {
+        setErrorModal({ isOpen: true, message: "Lütfen geçerli bir saat girin (Örn: 14:30)." });
+        return;
+      }
+      if (eventEndTime && !isValidTime(eventEndTime)) {
+        setErrorModal({ isOpen: true, message: "Lütfen geçerli bir bitiş saati girin (Örn: 16:00)." });
+        return;
+      }
+
+      // Eğer bitiş saati varsa, açıklamaya ekle
+      const finalDescription = eventEndTime 
+        ? `Bitiş Saati: ${eventEndTime}\n\n${newEvent.description}` 
+        : newEvent.description;
+
       // 2. Etkinlik verisini veritabanına kaydet
-      const combinedDate = `${eventDate}T${eventHour}:${eventMinute}:00`;
+      const combinedDate = `${eventDate}T${eventTime}:00`;
       const { data, error } = await supabase
         .from("events")
         .insert([{
@@ -263,7 +292,7 @@ export default function OrganizerDashboard() {
           category: newEvent.category,
           date: combinedDate,
           location: newEvent.location,
-          description: newEvent.description,
+          description: finalDescription,
           capacity: newEvent.capacity ? parseInt(newEvent.capacity, 10) : null,
           image_url: finalImageUrl || null,
           university_id: profile.university_id,
@@ -339,7 +368,7 @@ export default function OrganizerDashboard() {
     return lines;
   };
 
-  const generateCanvasPoster = (title, category, date, location, description, uniName, clubName) => {
+  const generateCanvasPoster = (title, category, date, endTime, location, description, uniName, clubName) => {
     const W = 768, H = 1024;
     const canvas = document.createElement('canvas');
     canvas.width = W;
@@ -524,7 +553,8 @@ export default function OrganizerDashboard() {
 
         // Saat Satırı
         drawIcon('clock', 60, infoY - 18, 22);
-        ctx.fillText(`Saat: ${timeStr}`, 94, infoY);
+        const displayTime = endTime ? `${timeStr} - ${endTime}` : timeStr;
+        ctx.fillText(`Saat: ${displayTime}`, 94, infoY);
         infoY += 38;
       } catch(e) {}
     }
@@ -556,16 +586,25 @@ export default function OrganizerDashboard() {
       setErrorModal({ isOpen: true, message: "Lütfen önce bir etkinlik başlığı girin. Yapay zeka başlığa uygun bir afiş tasarlayacaktır." });
       return;
     }
+    if (eventTime && !isValidTime(eventTime)) {
+      setErrorModal({ isOpen: true, message: "Lütfen geçerli bir saat girin (Örn: 14:30)." });
+      return;
+    }
+    if (eventEndTime && !isValidTime(eventEndTime)) {
+      setErrorModal({ isOpen: true, message: "Lütfen geçerli bir bitiş saati girin (Örn: 16:00)." });
+      return;
+    }
 
     setIsGenerating(true);
 
     try {
-      const combinedDate = eventDate ? `${eventDate}T${eventHour}:${eventMinute}:00` : "";
+      const combinedDate = eventDate ? `${eventDate}T${eventTime}:00` : "";
       // Canvas ile afiş üret
       const canvas = generateCanvasPoster(
         newEvent.title,
         newEvent.category,
         combinedDate,
+        eventEndTime,
         newEvent.location,
         newEvent.description,
         universityName,
@@ -907,44 +946,38 @@ export default function OrganizerDashboard() {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">Tarih / Saat</label>
-                      <div className="flex gap-2">
+                      {/* Tarih + Saat — tek satır, hizalı */}
+                      <div className="flex items-center gap-1.5 sm:gap-2">
                         {/* Tarih Seçici */}
-                        <div className="flex-1">
-                          <input 
-                            required 
-                            type="date" 
-                            value={eventDate} 
-                            onChange={(e) => setEventDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white"
+                        <input
+                          required
+                          type="date"
+                          value={eventDate}
+                          onChange={(e) => setEventDate(e.target.value)}
+                          className="flex-1 min-w-[130px] px-2 sm:px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white shadow-sm transition-all"
+                        />
+                        {/* Birleşik Saat Kutusu */}
+                        <div className="shrink-0 flex items-center gap-0.5 bg-white border border-gray-200 rounded-xl px-2 py-2 focus-within:ring-2 focus-within:ring-slate-900 focus-within:border-transparent shadow-sm transition-all">
+                          <input
+                            required
+                            type="text"
+                            placeholder="SS:DD"
+                            maxLength={5}
+                            value={eventTime}
+                            onChange={(e) => handleTimeChange(e, setEventTime)}
+                            className="w-10 sm:w-11 bg-transparent outline-none text-sm text-center font-bold text-gray-900 placeholder-gray-400 tabular-nums"
+                            title="Başlangıç Saati"
                           />
-                        </div>
-                        {/* Saat Seçici */}
-                        <div className="w-20">
-                          <select 
-                            value={eventHour} 
-                            onChange={(e) => setEventHour(e.target.value)}
-                            className="w-full px-2 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white appearance-none text-center font-semibold"
-                          >
-                            {Array.from({ length: 24 }).map((_, i) => {
-                              const val = i.toString().padStart(2, '0');
-                              return <option key={val} value={val}>{val}</option>;
-                            })}
-                          </select>
-                        </div>
-                        {/* İki nokta */}
-                        <div className="flex items-center text-gray-400 font-bold">:</div>
-                        {/* Dakika Seçici */}
-                        <div className="w-20">
-                          <select 
-                            value={eventMinute} 
-                            onChange={(e) => setEventMinute(e.target.value)}
-                            className="w-full px-2 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm bg-white appearance-none text-center font-semibold"
-                          >
-                            <option value="00">00</option>
-                            <option value="15">15</option>
-                            <option value="30">30</option>
-                            <option value="45">45</option>
-                          </select>
+                          <span className="text-gray-300 font-bold select-none px-0.5">–</span>
+                          <input
+                            type="text"
+                            placeholder="SS:DD"
+                            maxLength={5}
+                            value={eventEndTime}
+                            onChange={(e) => handleTimeChange(e, setEventEndTime)}
+                            className="w-10 sm:w-11 bg-transparent outline-none text-sm text-center font-bold text-gray-900 placeholder-gray-400 tabular-nums focus:placeholder-gray-300"
+                            title="Bitiş Saati (Opsiyonel)"
+                          />
                         </div>
                       </div>
                     </div>
