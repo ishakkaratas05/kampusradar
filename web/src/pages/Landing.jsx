@@ -145,7 +145,7 @@ export default function Landing() {
               </button>
             ) : (
               <button
-                onClick={() => navigate("/login")}
+                onClick={() => navigate("/discover")}
                 className="flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-bold text-slate-900 shadow-2xl transition hover:bg-slate-100 hover:scale-105"
               >
                 Keşfetmeye Başla

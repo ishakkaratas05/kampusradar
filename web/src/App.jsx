@@ -33,7 +33,7 @@ function App() {
         {/* KORUMALI ROTALAR */}
         <Route path="/home" element={<ProtectedRoute requiredRole="student"><Home /></ProtectedRoute>} />
         <Route path="/event/:id" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
-        <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
+        <Route path="/discover" element={<Discover />} />
         <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
         <Route path="/sks" element={<ProtectedRoute requiredRole="sks"><SKSDashboard /></ProtectedRoute>} />
         <Route path="/organizer" element={<ProtectedRoute requiredRole="organizer"><OrganizerDashboard /></ProtectedRoute>} />
