@@ -610,7 +610,7 @@ export default function ProfileScreen() {
                 <Image source={{ uri: newEvent.image_url }} style={styles.posterPreview} />
               ) : (
                 <>
-                  <UploadCloud size={32} color={colors.primary} />
+                  <UploadCloud size={32} color="#0284c7" />
                   <ThemedText style={[styles.uploadPosterText, { color: colors.textSecondary }]}>Afiş Seç / Yükle</ThemedText>
                 </>
               )}

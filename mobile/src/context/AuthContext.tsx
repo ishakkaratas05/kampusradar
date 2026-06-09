@@ -70,8 +70,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
         if (session?.user) {
+          await fetchProfile(session.user.id);
           setUser(session.user);
-          fetchProfile(session.user.id);
         }
       } catch (error) {
         console.warn('Oturum başlatılamadı:', error);
@@ -84,16 +84,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         if (!mounted) return;
         if (session?.user) {
+          setLoading(true);
+          await fetchProfile(session.user.id);
           setUser(session.user);
-          fetchProfile(session.user.id);
         } else {
           setUser(null);
           setProfile(null);
         }
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     );
 

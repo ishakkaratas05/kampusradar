@@ -253,7 +253,7 @@ export default function Landing() {
                     <img
                       src={uni.logo_url}
                       alt={uni.name}
-                      className="max-h-full max-w-full object-contain filter grayscale hover:grayscale-0 transition-all duration-300"
+                      className="max-h-full max-w-full object-contain hover:scale-105 transition-all duration-300"
                     />
                   ) : (
                     <span className="text-sm font-bold text-slate-500">{uni.abbreviation}</span>
@@ -267,7 +267,7 @@ export default function Landing() {
                     <img
                       src={uni.logo_url}
                       alt={uni.name}
-                      className="max-h-full max-w-full object-contain filter grayscale hover:grayscale-0 transition-all duration-300"
+                      className="max-h-full max-w-full object-contain hover:scale-105 transition-all duration-300"
                     />
                   ) : (
                     <span className="text-sm font-bold text-slate-500">{uni.abbreviation}</span>

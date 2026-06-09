@@ -182,7 +182,6 @@ export function RegisterScreen({ onNavigateToLogin, onBack }: RegisterScreenProp
                     >
                       <Text
                         style={[
-                          styles.roleButtonText,
                           role === 'student' ? styles.roleActiveText : styles.roleInactiveText,
                         ]}
                       >
@@ -199,7 +198,6 @@ export function RegisterScreen({ onNavigateToLogin, onBack }: RegisterScreenProp
                     >
                       <Text
                         style={[
-                          styles.roleButtonText,
                           role === 'organizer' ? styles.roleActiveText : styles.roleInactiveText,
                         ]}
                       >
