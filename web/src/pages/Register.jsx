@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 
@@ -15,12 +15,18 @@ export default function Register() {
   const [role, setRole] = useState("student"); // 'student' veya 'organizer'
   const [universityId, setUniversityId] = useState("");
   
+  // Öğrenci Akademik Bilgileri State'leri
+  const [faculty, setFaculty] = useState("");
+  const [department, setDepartment] = useState("");
+  const [classLevel, setClassLevel] = useState("");
+  const [studentNumber, setStudentNumber] = useState("");
+  
   // UI State
   const [universities, setUniversities] = useState([]);
   const [loadingUnis, setLoadingUnis] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Üniversiteleri Yükle
   useEffect(() => {
@@ -46,7 +52,6 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
-    setSuccessMessage("");
 
     // Validasyonlar
     if (!fullName.trim()) return setErrorMessage("Lütfen adınızı ve soyadınızı girin.");
@@ -55,20 +60,37 @@ export default function Register() {
     if (password.length < 6) return setErrorMessage("Şifreniz en az 6 karakter olmalıdır.");
     if (!universityId) return setErrorMessage("Lütfen bağlı olduğunuz üniversiteyi seçin.");
 
+    // Öğrenci Validasyonları
+    if (role === "student") {
+      if (!faculty.trim()) return setErrorMessage("Lütfen fakültenizi girin.");
+      if (!department.trim()) return setErrorMessage("Lütfen bölümünüzü girin.");
+      if (!classLevel) return setErrorMessage("Lütfen sınıfınızı seçin.");
+      if (!studentNumber) return setErrorMessage("Lütfen okul numaranızı girin.");
+      if (studentNumber.length !== 9) return setErrorMessage("Okul numarası 9 haneli olmalıdır.");
+    }
+
     setIsSubmitting(true);
 
     try {
-      await signUp(email, password, fullName, role, universityId);
-      
-      setSuccessMessage(
-        "Kayıt işleminiz başarıyla gerçekleştirildi! Hesabınızı etkinleştirmek için e-posta adresinize gönderilen doğrulama linkine tıklayın."
+      await signUp(
+        email, 
+        password, 
+        fullName, 
+        role, 
+        universityId, 
+        role === "student" ? faculty : null, 
+        role === "student" ? department : null, 
+        role === "student" ? classLevel : null, 
+        role === "student" ? studentNumber : null
       );
       
-      // Formu temizle
-      setFullName("");
-      setEmail("");
-      setPassword("");
-      setUniversityId("");
+      // Başarı modalını aç
+      setShowSuccessModal(true);
+      
+      // 2.5 saniye sonra Giriş sayfasına yönlendir
+      setTimeout(() => {
+        navigate("/login", { state: { success: "Kaydınız başarıyla tamamlandı! Bilgilerinizle giriş yapabilirsiniz." } });
+      }, 2500);
     } catch (err) {
       console.error("Kayıt hatası:", err);
       let msg = err.message || "Kayıt olurken beklenmedik bir hata oluştu.";
@@ -114,21 +136,6 @@ export default function Register() {
           </div>
         )}
 
-        {/* Başarı Mesajı */}
-        {successMessage && (
-          <div className="mb-4 flex flex-col items-center text-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs text-emerald-300">
-            <p className="font-semibold text-emerald-200">Kayıt Başarılı!</p>
-            <p className="leading-relaxed text-[11px] text-emerald-300/80">{successMessage}</p>
-            <button
-              onClick={() => navigate("/login")}
-              className="mt-1 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400 cursor-pointer"
-            >
-              Giriş Sayfasına Git
-            </button>
-          </div>
-        )}
-
-        {!successMessage && (
           <form onSubmit={handleSubmit} className="space-y-3">
             
             {/* Rol Seçimi (Öğrenci veya Organizatör) */}
@@ -233,6 +240,67 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Öğrenci Akademik Bilgileri */}
+            {role === "student" && (
+              <>
+                <div>
+                  <label className="mb-0.5 block text-xs font-medium text-slate-300">Fakülte</label>
+                  <input 
+                    type="text" 
+                    value={faculty}
+                    onChange={(e) => setFaculty(e.target.value)}
+                    placeholder="Mühendislik Fakültesi" 
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-0.5 block text-xs font-medium text-slate-300">Bölüm</label>
+                  <input 
+                    type="text" 
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    placeholder="Bilgisayar Mühendisliği" 
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-0.5 block text-xs font-medium text-slate-300">Sınıf</label>
+                    <select
+                      value={classLevel}
+                      onChange={(e) => setClassLevel(e.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled className="bg-slate-900 text-slate-500">Seçin</option>
+                      <option value="Hazırlık" className="bg-slate-900 text-white">Hazırlık</option>
+                      <option value="1. Sınıf" className="bg-slate-900 text-white">1. Sınıf</option>
+                      <option value="2. Sınıf" className="bg-slate-900 text-white">2. Sınıf</option>
+                      <option value="3. Sınıf" className="bg-slate-900 text-white">3. Sınıf</option>
+                      <option value="4. Sınıf" className="bg-slate-900 text-white">4. Sınıf</option>
+                      <option value="Lisansüstü" className="bg-slate-900 text-white">Lisansüstü</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-xs font-medium text-slate-300">Okul Numarası</label>
+                    <input 
+                      type="text" 
+                      maxLength={9}
+                      value={studentNumber}
+                      onChange={(e) => setStudentNumber(e.target.value.replace(/\D/g, ""))}
+                      placeholder="230101045" 
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition"
+                      required
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Kayıt Ol Butonu */}
             <button 
               type="submit"
@@ -249,7 +317,6 @@ export default function Register() {
               )}
             </button>
           </form>
-        )}
 
         {/* Giriş Yap Sayfasına Yönlendirme */}
         <p className="mt-4 text-center text-xs text-slate-400">
@@ -264,6 +331,29 @@ export default function Register() {
         </p>
         
       </div>
+
+      {/* Başarı Modalı */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-800 p-6 text-center text-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="mb-4 flex justify-center">
+              <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-400">
+                <CheckCircle className="h-14 w-14" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Kayıt Başarılı!</h3>
+            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+              Hesabınız başarıyla oluşturulmuştur.<br />Giriş sayfasına yönlendiriliyorsunuz...
+            </p>
+            <button
+              onClick={() => navigate("/login", { state: { success: "Kaydınız başarıyla tamamlandı! Bilgilerinizle giriş yapabilirsiniz." } })}
+              className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 transition cursor-pointer"
+            >
+              Hemen Giriş Yap
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

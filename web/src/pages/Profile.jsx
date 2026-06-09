@@ -18,7 +18,10 @@ import {
   Clock,
   XCircle,
   UploadCloud,
-  Pencil
+  Pencil,
+  BookOpen,
+  Hash,
+  GraduationCap
 } from "lucide-react";
 
 export default function Profile() {
@@ -460,6 +463,45 @@ export default function Profile() {
                     <p className="font-semibold text-white">{uniName || "Yükleniyor..."}</p>
                   </div>
                 </div>
+
+                {profile?.role === "student" && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <BookOpen className="h-5 w-5 text-slate-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Fakülte / Bölüm</p>
+                        <p className="font-semibold text-white">
+                          {profile.faculty || "-"} / {profile.department || "-"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <GraduationCap className="h-5 w-5 text-slate-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Sınıf</p>
+                        <p className="font-semibold text-white">{profile.class_level || "-"}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Hash className="h-5 w-5 text-slate-500 shrink-0" />
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Okul Numarası</p>
+                        <p 
+                          className="font-semibold text-white cursor-help border-b border-dotted border-slate-600 pb-0.5 inline-block"
+                          title={
+                            profile.student_number && profile.student_number.length >= 2
+                              ? `Üniversiteye Giriş Yılı: 20${profile.student_number.substring(0, 2)}`
+                              : ""
+                          }
+                        >
+                          {profile.student_number || "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="flex items-center gap-3">
                   <Shield className="h-5 w-5 text-slate-500 shrink-0" />

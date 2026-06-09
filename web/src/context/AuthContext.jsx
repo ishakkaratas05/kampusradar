@@ -101,7 +101,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Kayıt olma
-  const signUp = async (email, password, fullName, role = "student", universityId = null) => {
+  const signUp = async (email, password, fullName, role = "student", universityId = null, faculty = null, department = null, classLevel = null, studentNumber = null) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -110,6 +110,10 @@ export const AuthProvider = ({ children }) => {
           full_name: fullName,
           role: role,
           university_id: universityId,
+          faculty: faculty,
+          department: department,
+          class_level: classLevel,
+          student_number: studentNumber
         },
       },
     });

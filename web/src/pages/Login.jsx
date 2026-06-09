@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { ArrowLeft, Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -16,12 +16,23 @@ const roleRoutes = {
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, user, profile } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  // Kayıttan gelen başarı mesajını yakala ve state'i temizle
+  useEffect(() => {
+    if (location.state?.success) {
+      setSuccessMessage(location.state.success);
+      // URL'deki state'i temizle ki yenilendiğinde tekrar çıkmasın
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   // Zaten giriş yapmışsa doğrudan yönlendir (geri tuşuyla gelirse)
   useEffect(() => {
@@ -108,6 +119,14 @@ export default function Login() {
           <h1 className="text-3xl font-extrabold text-white tracking-tight">KampüsRadar</h1>
           <p className="mt-2 text-slate-400 text-sm">Kampüsündeki etkinlikleri kaçırma!</p>
         </div>
+
+        {/* Başarı Mesajı */}
+        {successMessage && (
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+            <CheckCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>{successMessage}</span>
+          </div>
+        )}
 
         {/* Hata Mesajı */}
         {errorMessage && (
