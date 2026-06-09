@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Slot } from 'expo-router';
 import { ActivityIndicator, View, StatusBar } from 'react-native';
 
@@ -12,6 +12,15 @@ import { RegisterScreen } from '@/components/auth/RegisterScreen';
 function MainNavigation() {
   const { user, loading, guestMode, setGuestMode } = useAuth();
   const [authScreen, setAuthScreen] = useState<'landing' | 'login' | 'register'>('landing');
+
+  const prevGuestMode = useRef(guestMode);
+
+  useEffect(() => {
+    if (prevGuestMode.current === true && guestMode === false) {
+      setAuthScreen('login');
+    }
+    prevGuestMode.current = guestMode;
+  }, [guestMode]);
 
   if (loading) {
     return (
