@@ -21,6 +21,58 @@ export default function SKSDashboard() {
   const [universityName, setUniversityName] = useState("");
   const [universityLogo, setUniversityLogo] = useState("");
 
+  // Organizatör onay akışı state ve fonksiyonları
+  const [activeTab, setActiveTab] = useState("events"); // "events" | "organizers"
+  const [organizers, setOrganizers] = useState([]);
+  const [loadingOrganizers, setLoadingOrganizers] = useState(false);
+
+  const loadOrganizers = async () => {
+    if (!profile?.university_id) return;
+    try {
+      setLoadingOrganizers(true);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("role", "organizer")
+        .eq("university_id", profile.university_id)
+        .eq("is_approved", false)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setOrganizers(data || []);
+    } catch (err) {
+      console.error("Organizatörler yüklenirken hata:", err.message);
+    } finally {
+      setLoadingOrganizers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile && activeTab === "organizers") {
+      loadOrganizers();
+    }
+  }, [profile, activeTab]);
+
+  const handleApproveOrganizer = async (orgId) => {
+    try {
+      setSubmitting(true);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_approved: true })
+        .eq("id", orgId);
+
+      if (error) throw error;
+
+      // State güncelle
+      setOrganizers(prev => prev.filter(org => org.id !== orgId));
+    } catch (err) {
+      console.error("Organizatör onaylanırken hata:", err.message);
+      alert("Organizatör onaylanırken hata oluştu: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Üniversite bilgilerini çek
   useEffect(() => {
     async function fetchUni() {
@@ -150,11 +202,36 @@ export default function SKSDashboard() {
         </div>
       </header>
 
-      {/* Ana İçerik */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
         
-        {/* İstatistik Kartları */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {/* Sekmeler: Etkinlik Talepleri & Organizatör Onayları */}
+        <div className="flex border-b border-gray-200 mb-8 shrink-0">
+          <button
+            onClick={() => setActiveTab("events")}
+            className={`py-3 px-6 font-bold text-sm border-b-2 transition-all cursor-pointer ${
+              activeTab === "events"
+                ? "border-slate-900 text-slate-900 font-extrabold"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Etkinlik Talepleri
+          </button>
+          <button
+            onClick={() => setActiveTab("organizers")}
+            className={`py-3 px-6 font-bold text-sm border-b-2 transition-all cursor-pointer ${
+              activeTab === "organizers"
+                ? "border-slate-900 text-slate-900 font-extrabold"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Organizatör Onayları ({organizers.length})
+          </button>
+        </div>
+
+        {activeTab === "events" ? (
+          <>
+            {/* İstatistik Kartları */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <div 
             onClick={() => setFilterStatus(prev => prev === "pending" ? "all" : "pending")}
             className={`p-5 rounded-2xl border shadow-sm flex items-center justify-between cursor-pointer transition-all ${
@@ -283,6 +360,69 @@ export default function SKSDashboard() {
             </div>
           )}
         </div>
+          </>
+        ) : (
+          /* Organizatör Onay Tablosu */
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in duration-200">
+            <div className="px-6 py-2.5 font-bold text-white bg-slate-900 text-center uppercase tracking-wider text-sm">
+              Bekleyen Organizatör Kayıt Başvuruları
+            </div>
+
+            {loadingOrganizers ? (
+              <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="text-sm font-medium">Başvurular yükleniyor...</span>
+              </div>
+            ) : organizers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                <Users className="h-10 w-10 mb-3 text-gray-300" />
+                <p className="text-sm font-medium">Onay bekleyen yeni bir organizatör başvurusu bulunmuyor.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-gray-600">
+                  <thead className="bg-gray-50 text-gray-900 font-bold border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-4">Topluluk Adı</th>
+                      <th className="px-6 py-4">E-posta</th>
+                      <th className="px-6 py-4">Kayıt Tarihi</th>
+                      <th className="px-6 py-4 text-right">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {organizers.map((org) => (
+                      <tr key={org.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-gray-900 flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-gray-200 overflow-hidden">
+                            {org.logo_url ? (
+                              <img src={org.logo_url} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <Users className="h-4 w-4 text-slate-400" />
+                            )}
+                          </div>
+                          {org.full_name}
+                        </td>
+                        <td className="px-6 py-4">{org.email}</td>
+                        <td className="px-6 py-4">
+                          {org.created_at ? new Date(org.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : "-"}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            disabled={submitting}
+                            onClick={() => handleApproveOrganizer(org.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition cursor-pointer disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" /> Onayla
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* DETAYLI İNCELEME VE ONAY POP-UP MODALI */}

@@ -15,7 +15,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 export default function OrganizerDashboard() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
   const router = useRouter();
@@ -330,8 +330,80 @@ export default function OrganizerDashboard() {
       </TouchableOpacity>
     );
   };
+  if (loading || !profile) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#0284c7" />
+      </SafeAreaView>
+    );
+  }
 
   const filteredEvents = orgEvents.filter(e => orgTab === 'active' ? new Date(e.date) >= new Date() : new Date(e.date) < new Date());
+
+  if (profile?.is_approved === false) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 24 }]} edges={['top']}>
+        <View style={{
+          backgroundColor: colors.backgroundElement,
+          borderWidth: 1,
+          borderColor: colors.backgroundSelected,
+          borderRadius: 24,
+          padding: 24,
+          alignItems: 'center',
+          width: '100%',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.05,
+          shadowRadius: 20,
+          elevation: 2,
+        }}>
+          <View style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            backgroundColor: scheme === 'dark' ? 'rgba(245, 158, 11, 0.1)' : '#fffbeb',
+            borderWidth: 1,
+            borderColor: scheme === 'dark' ? 'rgba(245, 158, 11, 0.2)' : '#fef3c7',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 16,
+          }}>
+            <Clock size={36} color="#f59e0b" />
+          </View>
+          <ThemedText style={{ fontSize: 22, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 12 }}>
+            SKS Onayı Bekleniyor
+          </ThemedText>
+          <ThemedText style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24 }}>
+            Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmektedir.
+            {"\n\n"}
+            Onaylanmanız durumunda sistemde aktif olacak ve etkinlik başvurusu yapabileceksiniz.
+          </ThemedText>
+          <TouchableOpacity 
+            style={{ 
+              backgroundColor: colors.text, 
+              paddingVertical: 14, 
+              paddingHorizontal: 24, 
+              borderRadius: 12,
+              width: '100%',
+              alignItems: 'center',
+            }}
+            onPress={async () => {
+              try {
+                await signOut();
+                router.replace('/');
+              } catch (err) {
+                console.error("Çıkış hatası:", err);
+              }
+            }}
+          >
+            <ThemedText style={{ color: colors.background, fontWeight: '700', fontSize: 15 }}>
+              Çıkış Yap ve Geri Dön
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>

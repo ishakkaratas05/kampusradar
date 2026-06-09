@@ -10,7 +10,7 @@ import { addOpenSansFont } from "../lib/OpenSans-Regular-normal.js";
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading, signOut } = useAuth();
 
   const [myEvents, setMyEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -691,6 +691,15 @@ export default function OrganizerDashboard() {
         }
       });
 
+  if (authLoading || !profile) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center gap-3 text-gray-500">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+        <span className="text-sm font-medium">Yükleniyor...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       
@@ -724,9 +733,39 @@ export default function OrganizerDashboard() {
       </header>
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
-        
-        {/* Topluluk Profili Alanı */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-8 flex items-center gap-5">
+        {profile?.is_approved === false ? (
+          <div className="bg-white rounded-3xl border border-gray-100 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto my-12 flex flex-col items-center gap-6">
+            <div className="h-24 w-24 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 text-amber-500 shadow-inner">
+              <AlertTriangle className="h-12 w-12 animate-pulse" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-gray-900 leading-tight">SKS Onayı Bekleniyor</h2>
+              <p className="text-gray-500 mt-4 leading-relaxed text-sm">
+                Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmektedir. 
+                Onaylanmanız durumunda sistemde aktif olacak ve etkinlik başvurusu yapabileceksiniz.
+              </p>
+            </div>
+            <div className="w-full h-px bg-gray-100 my-2"></div>
+            <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+              <button 
+                onClick={async () => {
+                  try {
+                    await signOut();
+                    navigate("/");
+                  } catch (err) {
+                    console.error("Çıkış hatası:", err);
+                  }
+                }} 
+                className="rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-bold text-gray-600 shadow-sm transition hover:bg-gray-50 cursor-pointer"
+              >
+                Çıkış Yap ve Geri Dön
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Topluluk Profili Alanı */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-8 flex items-center gap-5">
           <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full border-4 border-slate-50 bg-slate-100 overflow-hidden shadow-inner flex items-center justify-center shrink-0">
             {profile?.logo_url ? (
               <img src={profile.logo_url} alt="Topluluk Logosu" className="h-full w-full object-cover" />
@@ -910,6 +949,8 @@ export default function OrganizerDashboard() {
               </div>
             ))}
           </div>
+        )}
+          </>
         )}
       </main>
 

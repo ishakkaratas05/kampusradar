@@ -160,14 +160,16 @@ export default function Register() {
               </div>
             </div>
 
-            {/* Ad Soyad Girişi */}
+            {/* Ad Soyad / Topluluk Adı Girişi */}
             <div>
-              <label className="mb-0.5 block text-xs font-medium text-slate-300">Ad Soyad</label>
+              <label className="mb-0.5 block text-xs font-medium text-slate-300">
+                {role === "student" ? "Ad Soyad" : "Topluluk Adı"}
+              </label>
               <input 
                 type="text" 
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Ahmet Yılmaz" 
+                placeholder={role === "student" ? "Ahmet Yılmaz" : "Müzik Kulübü"} 
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition"
                 required
               />
