@@ -26,3 +26,6 @@ UPDATE public.profiles SET is_approved = TRUE WHERE role = 'organizer';
 
 -- 5. Profiles tablosuna rejection_reason kolonu ekle
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+
+-- 6. Profiles tablosuna is_suspended kolonu ekle
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN DEFAULT FALSE;

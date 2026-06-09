@@ -741,12 +741,12 @@ export default function OrganizerDashboard() {
                   <XCircle className="h-12 w-12 animate-bounce" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-gray-900 leading-tight">Başvurunuz Reddedildi</h2>
+                  <h2 className="text-2xl font-black text-gray-900 leading-tight">Hesabınız Askıya Alındı / Onaylanmadı</h2>
                   <p className="text-gray-550 mt-4 leading-relaxed text-sm">
-                    Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmiş ve reddedilmiştir.
+                    Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından askıya alınmış veya onaylanmamış olabilir.
                   </p>
                   <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-left">
-                    <p className="text-xs font-bold text-red-650 uppercase">Red Gerekçesi:</p>
+                    <p className="text-xs font-bold text-red-650 uppercase">Gerekçe / Açıklama:</p>
                     <p className="text-sm text-red-900 mt-1 font-medium">{profile.rejection_reason}</p>
                   </div>
                 </div>

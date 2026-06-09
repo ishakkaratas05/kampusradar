@@ -373,10 +373,10 @@ export default function OrganizerDashboard() {
                 <XCircle size={36} color="#ef4444" />
               </View>
               <ThemedText style={{ fontSize: 22, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 12 }}>
-                Başvurunuz Reddedildi
+                Hesabınız Askıya Alındı / Onaylanmadı
               </ThemedText>
               <ThemedText style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16 }}>
-                Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmiş ve reddedilmiştir.
+                Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından askıya alınmış veya onaylanmamış olabilir.
               </ThemedText>
               <View style={{
                 width: '100%',
@@ -389,7 +389,7 @@ export default function OrganizerDashboard() {
                 alignItems: 'flex-start',
               }}>
                 <ThemedText style={{ fontSize: 12, fontWeight: '800', color: '#ef4444', textTransform: 'uppercase', marginBottom: 4 }}>
-                  Red Gerekçesi:
+                  Gerekçe / Açıklama:
                 </ThemedText>
                 <ThemedText style={{ fontSize: 14, fontWeight: '600', color: scheme === 'dark' ? '#fca5a5' : '#991b1b', lineHeight: 20 }}>
                   {profile.rejection_reason}
