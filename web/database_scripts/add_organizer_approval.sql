@@ -23,3 +23,6 @@ EXECUTE FUNCTION public.set_organizer_approval();
 
 -- 4. Mevcut seed/test organizatörlerini onaylanmış olarak güncelle
 UPDATE public.profiles SET is_approved = TRUE WHERE role = 'organizer';
+
+-- 5. Profiles tablosuna rejection_reason kolonu ekle
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS rejection_reason TEXT;

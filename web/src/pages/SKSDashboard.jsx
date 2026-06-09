@@ -25,6 +25,9 @@ export default function SKSDashboard() {
   const [activeTab, setActiveTab] = useState("events"); // "events" | "organizers"
   const [organizers, setOrganizers] = useState([]);
   const [loadingOrganizers, setLoadingOrganizers] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState(null);
+  const [isOrgReviewModalOpen, setIsOrgReviewModalOpen] = useState(false);
+  const [orgRejectionInput, setOrgRejectionInput] = useState("");
 
   const loadOrganizers = async () => {
     if (!profile?.university_id) return;
@@ -48,7 +51,7 @@ export default function SKSDashboard() {
   };
 
   useEffect(() => {
-    if (profile && activeTab === "organizers") {
+    if (profile) {
       loadOrganizers();
     }
   }, [profile, activeTab]);
@@ -58,7 +61,7 @@ export default function SKSDashboard() {
       setSubmitting(true);
       const { error } = await supabase
         .from("profiles")
-        .update({ is_approved: true })
+        .update({ is_approved: true, rejection_reason: null })
         .eq("id", orgId);
 
       if (error) throw error;
@@ -68,6 +71,32 @@ export default function SKSDashboard() {
     } catch (err) {
       console.error("Organizatör onaylanırken hata:", err.message);
       alert("Organizatör onaylanırken hata oluştu: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRejectOrganizer = async (orgId, reason) => {
+    try {
+      setSubmitting(true);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ 
+          is_approved: false, 
+          rejection_reason: reason 
+        })
+        .eq("id", orgId);
+
+      if (error) throw error;
+
+      // State güncelle
+      setOrganizers(prev => prev.map(org => org.id === orgId ? { ...org, is_approved: false, rejection_reason: reason } : org));
+      setIsOrgReviewModalOpen(false);
+      setOrgRejectionInput("");
+      setSelectedOrg(null);
+    } catch (err) {
+      console.error("Organizatör reddedilirken hata:", err.message);
+      alert("Organizatör reddedilirken hata oluştu: " + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -224,7 +253,7 @@ export default function SKSDashboard() {
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            Organizatör Onayları ({organizers.length})
+            Topluluk Kayıt Talepleri ({organizers.length})
           </button>
         </div>
 
@@ -365,7 +394,7 @@ export default function SKSDashboard() {
           /* Organizatör Onay Tablosu */
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in duration-200">
             <div className="px-6 py-2.5 font-bold text-white bg-slate-900 text-center uppercase tracking-wider text-sm">
-              Bekleyen Organizatör Kayıt Başvuruları
+              Bekleyen Topluluk Kayıt Başvuruları
             </div>
 
             {loadingOrganizers ? (
@@ -386,6 +415,7 @@ export default function SKSDashboard() {
                       <th className="px-6 py-4">Topluluk Adı</th>
                       <th className="px-6 py-4">E-posta</th>
                       <th className="px-6 py-4">Kayıt Tarihi</th>
+                      <th className="px-6 py-4">Durum</th>
                       <th className="px-6 py-4 text-right">İşlem</th>
                     </tr>
                   </thead>
@@ -406,14 +436,37 @@ export default function SKSDashboard() {
                         <td className="px-6 py-4">
                           {org.created_at ? new Date(org.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : "-"}
                         </td>
+                        <td className="px-6 py-4">
+                          {org.rejection_reason ? (
+                            <div className="flex flex-col items-start max-w-[200px]" title={org.rejection_reason}>
+                              <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-red-100 text-red-700">Reddedildi</span>
+                              <span className="text-[10px] text-red-650 font-medium truncate w-full mt-1">Neden: {org.rejection_reason}</span>
+                            </div>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
+                              Onay Bekliyor
+                            </span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            disabled={submitting}
-                            onClick={() => handleApproveOrganizer(org.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition cursor-pointer disabled:opacity-50"
-                          >
-                            <Check className="h-3.5 w-3.5" /> Onayla
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              disabled={submitting}
+                              onClick={() => handleApproveOrganizer(org.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition cursor-pointer disabled:opacity-50"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Onayla
+                            </button>
+                            {!org.rejection_reason && (
+                              <button
+                                disabled={submitting}
+                                onClick={() => { setSelectedOrg(org); setIsOrgReviewModalOpen(true); setOrgRejectionInput(""); }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition cursor-pointer disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" /> Reddet
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -568,6 +621,60 @@ export default function SKSDashboard() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORGANİZATÖR REDDETME MODALI */}
+      {isOrgReviewModalOpen && selectedOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-150 flex items-center justify-between bg-white z-10 shrink-0">
+              <h2 className="text-lg font-bold text-gray-900">Topluluk Başvurusunu Reddet</h2>
+              <button 
+                onClick={() => setIsOrgReviewModalOpen(false)} 
+                className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-4">
+              <div className="text-sm">
+                <p className="font-semibold text-gray-700">Topluluk Adı: <span className="font-bold text-gray-900">{selectedOrg.full_name}</span></p>
+                <p className="font-semibold text-gray-700 mt-1">E-posta: <span className="font-medium text-gray-600">{selectedOrg.email}</span></p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="block text-sm font-bold text-red-700">Red Gerekçesi (Zorunlu)</label>
+                <textarea
+                  required
+                  rows="3"
+                  value={orgRejectionInput}
+                  onChange={(e) => setOrgRejectionInput(e.target.value)}
+                  placeholder="Lütfen topluluğa iletilecek ret sebebini yazın..."
+                  className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white resize-none"
+                ></textarea>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-150 flex gap-3 justify-end">
+              <button 
+                type="button" 
+                onClick={() => setIsOrgReviewModalOpen(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-xl text-sm hover:bg-gray-300 transition cursor-pointer"
+              >
+                İptal
+              </button>
+              <button 
+                type="button" 
+                disabled={submitting || !orgRejectionInput.trim()}
+                onClick={() => handleRejectOrganizer(selectedOrg.id, orgRejectionInput)}
+                className="px-4 py-2 bg-red-650 text-white font-bold rounded-xl text-sm hover:bg-red-750 disabled:opacity-50 transition cursor-pointer"
+              >
+                {submitting ? "İşleniyor..." : "Reddi Onayla"}
+              </button>
             </div>
           </div>
         </div>

@@ -735,16 +735,36 @@ export default function OrganizerDashboard() {
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
         {profile?.is_approved === false ? (
           <div className="bg-white rounded-3xl border border-gray-100 p-8 sm:p-12 shadow-sm text-center max-w-2xl mx-auto my-12 flex flex-col items-center gap-6">
-            <div className="h-24 w-24 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 text-amber-500 shadow-inner">
-              <AlertTriangle className="h-12 w-12 animate-pulse" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-gray-900 leading-tight">SKS Onayı Bekleniyor</h2>
-              <p className="text-gray-500 mt-4 leading-relaxed text-sm">
-                Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmektedir. 
-                Onaylanmanız durumunda sistemde aktif olacak ve etkinlik başvurusu yapabileceksiniz.
-              </p>
-            </div>
+            {profile?.rejection_reason ? (
+              <>
+                <div className="h-24 w-24 bg-red-50 rounded-full flex items-center justify-center border border-red-100 text-red-500 shadow-inner">
+                  <XCircle className="h-12 w-12 animate-bounce" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900 leading-tight">Başvurunuz Reddedildi</h2>
+                  <p className="text-gray-550 mt-4 leading-relaxed text-sm">
+                    Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmiş ve reddedilmiştir.
+                  </p>
+                  <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-left">
+                    <p className="text-xs font-bold text-red-650 uppercase">Red Gerekçesi:</p>
+                    <p className="text-sm text-red-900 mt-1 font-medium">{profile.rejection_reason}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="h-24 w-24 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 text-amber-500 shadow-inner">
+                  <AlertTriangle className="h-12 w-12 animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900 leading-tight">SKS Onayı Bekleniyor</h2>
+                  <p className="text-gray-500 mt-4 leading-relaxed text-sm">
+                    Hesabınız bağlı olduğunuz üniversitenin Sağlık Kültür ve Spor Daire Başkanlığı (SKS) birimi tarafından incelenmektedir. 
+                    Onaylanmanız durumunda sistemde aktif olacak ve etkinlik başvurusu yapabileceksiniz.
+                  </p>
+                </div>
+              </>
+            )}
             <div className="w-full h-px bg-gray-100 my-2"></div>
             <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
               <button 
