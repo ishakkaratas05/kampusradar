@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, FlatList, ActivityIndicator, RefreshControl, ScrollView, Image } from 'react-native';
 import { Calendar, ChevronDown, Check } from 'lucide-react-native';
 import { Modal, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,9 +13,16 @@ import { Colors, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function HomeScreen() {
-  const { user, profile } = useAuth();
+  const { user, profile, guestMode } = useAuth();
+  const router = useRouter();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+
+  useEffect(() => {
+    if (!user && guestMode) {
+      router.replace('/explore');
+    }
+  }, [user, guestMode]);
 
   const [events, setEvents] = useState<EventType[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);

@@ -6,6 +6,7 @@ import { ThemedView } from '../themed-view';
 import { MapPin, Users, School, Bookmark, CheckCircle, Clock, XCircle } from 'lucide-react-native';
 import { Colors, Spacing } from '@/constants/theme';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/context/AuthContext';
 
 export interface EventType {
   id: string | number;
@@ -34,14 +35,23 @@ export function EventCard({ event, isSaved = false, onToggleSave, onPress, hideS
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
   const router = useRouter();
+  const { user, setGuestMode } = useAuth();
 
   const handleSaveClick = () => {
+    if (!user) {
+      setGuestMode?.(false);
+      return;
+    }
     if (onToggleSave) {
       onToggleSave(event.id);
     }
   };
 
   const handlePress = () => {
+    if (!user) {
+      setGuestMode?.(false);
+      return;
+    }
     if (onPress) {
       onPress();
     } else {

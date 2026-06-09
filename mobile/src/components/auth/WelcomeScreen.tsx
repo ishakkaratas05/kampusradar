@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabaseClient';
 interface WelcomeScreenProps {
   onNavigateToLogin: () => void;
   onNavigateToRegister: () => void;
+  onContinueAsGuest: () => void;
 }
 
 interface University {
@@ -31,7 +32,7 @@ interface Club {
 
 const { width, height } = Dimensions.get('window');
 
-export function WelcomeScreen({ onNavigateToLogin, onNavigateToRegister }: WelcomeScreenProps) {
+export function WelcomeScreen({ onNavigateToLogin, onNavigateToRegister, onContinueAsGuest }: WelcomeScreenProps) {
   const [universities, setUniversities] = useState<University[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,14 +111,22 @@ export function WelcomeScreen({ onNavigateToLogin, onNavigateToRegister }: Welco
             </Text>
           </View>
 
-          <View style={styles.buttonContainer}>
+            <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={styles.primaryButton}
-              onPress={onNavigateToLogin}
+              onPress={onContinueAsGuest}
               activeOpacity={0.8}
             >
               <Text style={styles.primaryButtonText}>Keşfetmeye Başla</Text>
               <ArrowRight color="#0f172a" size={20} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.secondaryButton}
+              onPress={onNavigateToLogin}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryButtonText}>Giriş Yap</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -408,6 +417,23 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#0f172a',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  authButtonsRow: {
+    gap: 16,
+  },
+  secondaryButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    color: '#ffffff',
     fontSize: 18,
     fontWeight: '700',
   },

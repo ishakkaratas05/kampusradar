@@ -16,6 +16,8 @@ interface AuthContextType {
     universityId?: string | null
   ) => Promise<any>;
   fetchProfile: () => void;
+  guestMode?: boolean;
+  setGuestMode?: (val: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -24,6 +26,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [guestMode, setGuestMode] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setGuestMode(false);
+    }
+  }, [user]);
 
   // Fetch profile in the background
   const fetchProfile = async (userId: string) => {
@@ -116,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     setUser(null);
     setProfile(null);
+    setGuestMode(false);
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
@@ -152,6 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut,
         signUp,
         fetchProfile: () => user && fetchProfile(user.id),
+        guestMode,
+        setGuestMode,
       }}
     >
       {children}

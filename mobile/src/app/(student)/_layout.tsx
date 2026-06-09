@@ -8,9 +8,18 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { profile } = useAuth();
+  const { profile, user, setGuestMode } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+
+  const guestTabListener = {
+    tabPress: (e: any) => {
+      if (!user) {
+        e.preventDefault();
+        setGuestMode?.(false);
+      }
+    },
+  };
 
   return (
     <Tabs
@@ -64,6 +73,7 @@ export default function TabLayout() {
           title: 'Kampüsüm',
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
+        listeners={guestTabListener}
       />
       <Tabs.Screen
         name="explore"
@@ -79,6 +89,7 @@ export default function TabLayout() {
           headerShown: false,
           tabBarIcon: ({ color, size }) => <Radar size={size} color={color} />,
         }}
+        listeners={guestTabListener}
       />
       <Tabs.Screen
         name="profile"
@@ -110,6 +121,7 @@ export default function TabLayout() {
             return <UserCircle size={size} color={color} />;
           },
         }}
+        listeners={guestTabListener}
       />
     </Tabs>
   );

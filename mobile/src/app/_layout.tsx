@@ -10,7 +10,7 @@ import { LoginScreen } from '@/components/auth/LoginScreen';
 import { RegisterScreen } from '@/components/auth/RegisterScreen';
 
 function MainNavigation() {
-  const { user, loading } = useAuth();
+  const { user, loading, guestMode, setGuestMode } = useAuth();
   const [authScreen, setAuthScreen] = useState<'landing' | 'login' | 'register'>('landing');
 
   if (loading) {
@@ -21,12 +21,13 @@ function MainNavigation() {
     );
   }
 
-  if (!user) {
+  if (!user && !guestMode) {
     if (authScreen === 'landing') {
       return (
         <WelcomeScreen 
           onNavigateToLogin={() => setAuthScreen('login')}
           onNavigateToRegister={() => setAuthScreen('register')}
+          onContinueAsGuest={() => setGuestMode?.(true)}
         />
       );
     } else if (authScreen === 'login') {
@@ -37,7 +38,7 @@ function MainNavigation() {
     }
   }
 
-  // Once authenticated, render the child routes (which include (tabs))
+  // Once authenticated or in guest mode, render the child routes (which include (tabs))
   return <Slot />;
 }
 
