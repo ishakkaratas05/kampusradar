@@ -519,7 +519,14 @@ export default function SKSDashboard() {
                             <div className="text-xs flex flex-col gap-0.5 text-gray-500">
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" /> 
-                                {req.date ? new Date(req.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                                {req.date 
+                                  ? (() => {
+                                      const d = new Date(req.date);
+                                      const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+                                      const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                                      return req.end_time ? `${datePart} ${timePart} – ${req.end_time}` : `${datePart} ${timePart}`;
+                                    })()
+                                  : "-"}
                               </span>
                               <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {req.location}</span>
                             </div>
@@ -985,7 +992,7 @@ export default function SKSDashboard() {
       {/* DETAYLI İNCELEME VE ONAY POP-UP MODALI */}
       {isReviewModalOpen && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col h-[85vh]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-y-auto md:overflow-hidden flex flex-col h-auto md:h-[85vh] max-h-[95vh] md:max-h-none">
             
             {/* Modal Üst Bar */}
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white z-10 shrink-0">
@@ -999,12 +1006,12 @@ export default function SKSDashboard() {
               </button>
             </div>
 
-            {/* Modal İçerik (Sabit Yükseklik) */}
-            <div className="p-6 flex-1 overflow-hidden">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 h-full">
+            {/* Modal İçerik */}
+            <div className="p-6 flex-1 overflow-y-auto md:overflow-hidden min-h-0">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 h-auto md:h-full min-h-0">
                 
                 {/* Sol Taraf: Bilgiler ve Butonlar (7 Kolon) */}
-                <div className="md:col-span-7 flex flex-col h-full">
+                <div className="md:col-span-7 flex flex-col h-auto md:h-full min-h-0">
                   
                   {/* Başlık ve Profil */}
                   <div className="flex items-start gap-4 mb-5 shrink-0">
@@ -1024,13 +1031,13 @@ export default function SKSDashboard() {
                   {/* Özet Bilgiler */}
                   <div className="bg-slate-50 rounded-xl p-4 sm:p-5 border border-gray-100 flex flex-col gap-3 text-sm text-gray-700 shrink-0 mb-5">
                     <div className="flex items-center gap-2"><Users className="h-4 w-4 text-gray-400 shrink-0" /> <span className="font-medium text-gray-500 w-24">Düzenleyici:</span> <span className="font-bold text-slate-900">{selectedEvent.profiles?.full_name || "Bilinmiyor"}</span></div>
-                    <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400 shrink-0" /> <span className="font-medium text-gray-500 w-24">Tarih:</span> <span className="font-semibold">{selectedEvent.date ? new Date(selectedEvent.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}</span></div>
+                    <div className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400 shrink-0" /> <span className="font-medium text-gray-500 w-24">Tarih:</span> <span className="font-semibold">{selectedEvent.date ? (() => { const d = new Date(selectedEvent.date); const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }); const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' }); return selectedEvent.end_time ? `${datePart} ${timePart} – ${selectedEvent.end_time}` : `${datePart} ${timePart}`; })() : "-"}</span></div>
                     <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-400 shrink-0" /> <span className="font-medium text-gray-500 w-24">Konum:</span> <span className="font-semibold">{selectedEvent.location}</span></div>
                     <div className="flex items-center gap-2"><Users className="h-4 w-4 text-gray-400 shrink-0" /> <span className="font-medium text-gray-500 w-24">Kapasite:</span> <span className="font-semibold">{selectedEvent.capacity || "Sınırsız"}</span></div>
                   </div>
 
                   {/* Açıklama (Sadece burası kaydırılabilir) */}
-                  <div className="flex-1 flex flex-col overflow-hidden min-h-0 mb-5">
+                  <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-h-[120px] md:min-h-0 mb-5">
                     <h4 className="text-sm font-bold text-gray-900 mb-2 shrink-0">Açıklama</h4>
                     <div className="text-sm text-gray-600 leading-relaxed bg-gray-50/50 rounded-xl p-4 border border-gray-100 whitespace-pre-wrap overflow-y-auto flex-1">
                       {selectedEvent.description}
@@ -1110,7 +1117,7 @@ export default function SKSDashboard() {
                 </div>
 
                 {/* Sağ Taraf: Afiş (5 Kolon) */}
-                <div className="md:col-span-5 h-full rounded-2xl overflow-hidden relative bg-slate-950 shadow-inner">
+                <div className="md:col-span-5 h-64 md:h-full rounded-2xl overflow-hidden relative bg-slate-950 shadow-inner shrink-0">
                   {selectedEvent.image_url ? (
                     <img 
                       src={selectedEvent.image_url} 

@@ -50,7 +50,7 @@ export default function RadarScreen() {
       const { data, error } = await supabase
         .from('events')
         .select(`
-          id, title, date, location, image_url, category,
+          id, title, date, location, image_url, category, end_time,
           universities(name, logo_url),
           profiles:organizer_id(full_name, logo_url)
         `)
@@ -91,7 +91,8 @@ export default function RadarScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    const eventDate = item.date ? new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const baseDate = item.date ? new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const eventDate = item.end_time ? `${baseDate} – ${item.end_time}` : baseDate;
     
     // Floating card dimensions (inset 20px on each side)
     const cardWidth = WINDOW_WIDTH - 40;

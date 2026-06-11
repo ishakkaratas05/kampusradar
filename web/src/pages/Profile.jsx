@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import Navbar from "../components/Navbar";
+import ImageCropModal from "../components/ImageCropModal";
 import { 
   User, 
   Mail, 
@@ -51,7 +52,10 @@ export default function Profile() {
   const fileInputRef = useRef(null);
   const editMenuRef = useRef(null);
 
-  const handleLogoUpload = async (e) => {
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+
+  const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
     
@@ -61,18 +65,31 @@ export default function Profile() {
       return;
     }
 
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result);
+      setIsCropModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = null; // Reset input
+  };
+
+  const handleCropConfirm = async (croppedBlob) => {
+    setIsCropModalOpen(false);
+    if (!croppedBlob) return;
+
     try {
       setLogoUploading(true);
       const isStudent = profile?.role === "student";
       const folder = isStudent ? "avatars" : "logos";
       const prefix = isStudent ? "avatar" : "logo";
-      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileExt = "png";
       const fileName = `${prefix}_${user.id}_${Date.now()}.${fileExt}`;
       const filePath = `${folder}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('public-assets')
-        .upload(filePath, file, { contentType: file.type });
+        .upload(filePath, croppedBlob, { contentType: 'image/png' });
 
       if (uploadError) throw uploadError;
 
@@ -96,7 +113,6 @@ export default function Profile() {
       setErrorModal({ isOpen: true, message: 'Fotoğraf yüklenirken bir hata oluştu: ' + err.message });
     } finally {
       setLogoUploading(false);
-      e.target.value = null;
     }
   };
 
@@ -207,6 +223,7 @@ export default function Profile() {
             date,
             location,
             status,
+            end_time,
             universities (
               name
             )
@@ -225,7 +242,14 @@ export default function Profile() {
           title: item.events.title,
           description: item.events.description,
           category: item.events.category,
-          date: item.events.date ? new Date(item.events.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          date: item.events.date 
+            ? (() => {
+                const d = new Date(item.events.date);
+                const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+                const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                return item.events.end_time ? `${datePart} ${timePart} – ${item.events.end_time}` : `${datePart} ${timePart}`;
+              })()
+            : "",
           location: item.events.location,
           university: item.events.universities?.name || "Belirtilmemiş"
         }));
@@ -256,6 +280,7 @@ export default function Profile() {
             date,
             location,
             status,
+            end_time,
             universities (
               name
             )
@@ -274,7 +299,14 @@ export default function Profile() {
           title: item.events.title,
           description: item.events.description,
           category: item.events.category,
-          date: item.events.date ? new Date(item.events.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          date: item.events.date 
+            ? (() => {
+                const d = new Date(item.events.date);
+                const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+                const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                return item.events.end_time ? `${datePart} ${timePart} – ${item.events.end_time}` : `${datePart} ${timePart}`;
+              })()
+            : "",
           location: item.events.location,
           university: item.events.universities?.name || "Belirtilmemiş"
         }));
@@ -489,12 +521,7 @@ export default function Profile() {
                       <div>
                         <p className="text-xs text-slate-500 font-medium">Okul Numarası</p>
                         <p 
-                          className="font-semibold text-white cursor-help border-b border-dotted border-slate-600 pb-0.5 inline-block"
-                          title={
-                            profile.student_number && profile.student_number.length >= 2
-                              ? `Üniversiteye Giriş Yılı: 20${profile.student_number.substring(0, 2)}`
-                              : ""
-                          }
+                          className="font-semibold text-white inline-block"
                         >
                           {profile.student_number || "-"}
                         </p>
@@ -769,7 +796,15 @@ export default function Profile() {
           </div>
         </div>
       )}
-
+      {/* Resim Kırpma / Yakınlaştırma Modalı */}
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={cropImageSrc}
+        onClose={() => setIsCropModalOpen(false)}
+        onConfirm={handleCropConfirm}
+        circular={true}
+        title={profile?.role === "student" ? "Profil Fotoğrafını Düzenle" : "Topluluk Logosunu Düzenle"}
+      />
 
     </div>
   );

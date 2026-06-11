@@ -1,61 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Search, ArrowLeft, School, MapPin, X, AlertCircle, Calendar, Loader2, CheckCircle2, XCircle, ChevronDown, LogOut, LayoutDashboard, UploadCloud } from "lucide-react"; 
+import { Plus, Trash2, Search, ArrowLeft, School, MapPin, X, AlertCircle, Calendar, Loader2, CheckCircle2, XCircle, ChevronDown, LogOut, LayoutDashboard, UploadCloud, Pencil } from "lucide-react"; 
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
+import ImageCropModal from "../components/ImageCropModal";
+import ProfileDropdown from "../components/ProfileDropdown";
 
-const roleRoutes = {
-  admin: "/admin",
-  sks: "/sks",
-  organizer: "/organizer",
-  student: "/home",
-};
 
-const roleLabels = {
-  admin: "Admin",
-  sks: "SKS Yetkilisi",
-  organizer: "Organizatör",
-  student: "Öğrenci",
-};
-
-function getInitials(name, email) {
-  if (name) {
-    return name.split(" ").filter(Boolean).map((n) => n[0]).join("").substring(0, 2).toUpperCase();
-  }
-  return email?.[0]?.toUpperCase() || "?";
-}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, profile, signOut, loading: authLoading } = useAuth();
 
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
 
-  // Dışarı tıklanınca dropdown'u kapat
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleSignOut = async () => {
-    setDropdownOpen(false);
-    await signOut();
-    navigate("/");
-  };
-
-  const handleDashboard = () => {
-    setDropdownOpen(false);
-    const route = roleRoutes[profile?.role] || "/home";
-    navigate(route);
-  };
-
-  const dashboardLabel = roleLabels[profile?.role] || "Panele Git";
 
   const [universities, setUniversities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +27,10 @@ export default function AdminDashboard() {
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingUni, setEditingUni] = useState(null);
   const fileInputRef = useRef(null);
 
   // Bildirim Modalı State'i (Başarı veya Hata için)
@@ -187,6 +148,94 @@ export default function AdminDashboard() {
     setIsAddModalOpen(true);
   };
 
+  const handleCropConfirm = (croppedBlob) => {
+    setIsCropModalOpen(false);
+    if (croppedBlob) {
+      // Create a file-like object or directly use blob
+      croppedBlob.name = "university_logo.png";
+      setLogoFile(croppedBlob);
+      setLogoPreview(URL.createObjectURL(croppedBlob));
+    }
+  };
+  const handleOpenEditModal = (uni) => {
+    setEditingUni({ ...uni });
+    setLogoPreview(uni.logo_url || "");
+    setLogoFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setSaving(true);
+
+      const foundedYear = parseInt(editingUni.founded, 10);
+      if (isNaN(foundedYear)) {
+        throw new Error("Kuruluş yılı geçerli bir sayı olmalıdır.");
+      }
+
+      let finalLogoUrl = editingUni.logo_url;
+
+      // Eğer logo dosyası seçildiyse Supabase Storage'a yükle
+      if (logoFile) {
+        setUploadingLogo(true);
+        const fileExt = logoFile.name ? logoFile.name.split('.').pop() : 'png';
+        const fileName = `uni_${Math.random().toString(36).substring(2, 10)}_${Date.now()}.${fileExt}`;
+        const filePath = `universities/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('public-assets')
+          .upload(filePath, logoFile, { 
+            contentType: logoFile.type || 'image/png' 
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from('public-assets')
+          .getPublicUrl(filePath);
+
+        finalLogoUrl = publicUrlData.publicUrl;
+      }
+
+      const { data, error } = await supabase
+        .from("universities")
+        .update({
+          name: editingUni.name,
+          abbreviation: editingUni.abbreviation,
+          city: editingUni.city,
+          founded: foundedYear,
+          history: editingUni.history,
+          logo_url: finalLogoUrl,
+        })
+        .eq("id", editingUni.id)
+        .select();
+
+      if (error) throw error;
+
+      setUniversities(universities.map(u => u.id === editingUni.id ? data[0] : u));
+      setIsEditModalOpen(false);
+      const updatedName = editingUni.name;
+      setEditingUni(null);
+      setLogoFile(null);
+      setLogoPreview("");
+      
+      showSuccess("Kayıt Güncellendi", `${updatedName} başarıyla güncellendi.`);
+    } catch (err) {
+      console.error("Güncelleme hatası:", err.message);
+      setIsEditModalOpen(false);
+      showError(
+        "Güncelleme Başarısız", 
+        `Üniversite güncellenirken bir hata oluştu:\n${err.message}`
+      );
+    } finally {
+      setSaving(false);
+      setUploadingLogo(false);
+    }
+  };
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -321,56 +370,7 @@ export default function AdminDashboard() {
             <p className="text-xs text-slate-400 font-medium">Sistem Yöneticisi Paneli</p>
           </div>
         </div>
-        <div className="relative" ref={dropdownRef}>
-          <button
-            onClick={() => setDropdownOpen((prev) => !prev)}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-white/10 cursor-pointer"
-          >
-            {/* Avatar */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900 font-bold text-sm shadow-sm uppercase shrink-0">
-              {getInitials(profile?.full_name, user?.email)}
-            </div>
-            {/* İsim ve Rol */}
-            <div className="hidden sm:flex flex-col items-start leading-tight text-left">
-              <span className="text-sm font-bold text-white truncate max-w-[140px]">
-                {profile?.full_name || user?.email}
-              </span>
-              <span className="text-[11px] text-slate-400 font-medium">
-                {roleLabels[profile?.role] || "Yönetici"}
-              </span>
-            </div>
-            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {/* Dropdown Menü */}
-          {dropdownOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-slate-800 border border-slate-700 shadow-2xl overflow-hidden animate-in">
-              {/* Üst bilgi alanı */}
-              <div className="px-4 py-3 border-b border-slate-700">
-                <p className="text-xs text-slate-400 font-medium">Giriş yapıldı</p>
-                <p className="text-sm font-bold text-white truncate mt-0.5">{user?.email}</p>
-              </div>
-              {/* Menü öğeleri */}
-              <div className="py-1">
-                <button
-                  onClick={handleDashboard}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700 hover:text-white transition cursor-pointer"
-                >
-                  <LayoutDashboard className="h-4 w-4 text-blue-400" />
-                  {dashboardLabel} Paneli
-                </button>
-                <hr className="border-slate-700 my-1" />
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition cursor-pointer"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Çıkış Yap
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <ProfileDropdown />
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
@@ -476,7 +476,14 @@ export default function AdminDashboard() {
                           Aktif
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleOpenEditModal(uni)}
+                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          title="Üniversiteyi Düzenle"
+                        >
+                          <Pencil className="h-5 w-5" />
+                        </button>
                         <button 
                           onClick={() => openDeleteModal(uni)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
@@ -566,19 +573,7 @@ export default function AdminDashboard() {
                   onClick={() => fileInputRef.current.click()}
                   className="border-2 border-dashed border-gray-200 hover:border-slate-400 rounded-xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition bg-slate-50/50 hover:bg-slate-50"
                 >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    accept="image/*" 
-                    className="hidden" 
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        setLogoFile(file);
-                        setLogoPreview(URL.createObjectURL(file));
-                      }
-                    }}
-                  />
+
                   {logoPreview ? (
                     <div className="flex flex-col items-center gap-2">
                       <div className="h-16 w-16 bg-white border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center p-1 shadow-sm">
@@ -681,6 +676,140 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ÜNİVERSİTE DÜZENLEME MODALI */}
+      {isEditModalOpen && editingUni && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-900">Üniversiteyi Düzenle</h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Üniversite Tam Adı</label>
+                <input 
+                  required type="text" placeholder="Örn: Hacettepe Üniversitesi"
+                  value={editingUni.name} 
+                  onChange={(e) => setEditingUni({...editingUni, name: formatTitleCase(e.target.value)})}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Kısaltma</label>
+                  <input 
+                    required type="text" placeholder="Örn: HÜ"
+                    value={editingUni.abbreviation} 
+                    onChange={(e) => setEditingUni({...editingUni, abbreviation: formatUpperCase(e.target.value)})}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Şehir</label>
+                  <input 
+                    required type="text" placeholder="Örn: Ankara"
+                    value={editingUni.city} 
+                    onChange={(e) => setEditingUni({...editingUni, city: formatTitleCase(e.target.value)})}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Kuruluş Yılı</label>
+                  <input 
+                    required type="number" placeholder="Örn: 1967"
+                    value={editingUni.founded} onChange={(e) => setEditingUni({...editingUni, founded: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Tarihçe / Açıklama</label>
+                <textarea 
+                  required rows="3" placeholder="Üniversite hakkında kısa bilgi..."
+                  value={editingUni.history || ""} onChange={(e) => setEditingUni({...editingUni, history: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 resize-none text-sm"
+                ></textarea>
+              </div>
+
+              {/* Logo Yükleme Alanı */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Üniversite Logosu (Opsiyonel)</label>
+                <div 
+                  onClick={() => fileInputRef.current.click()}
+                  className="border-2 border-dashed border-gray-200 hover:border-slate-400 rounded-xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition bg-slate-50/50 hover:bg-slate-50"
+                >
+                  {logoPreview ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-16 w-16 bg-white border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center p-1 shadow-sm">
+                        <img src={logoPreview} alt="Logo Önizleme" className="h-full w-full object-contain" />
+                      </div>
+                      <span className="text-xs text-gray-500 font-semibold truncate max-w-[200px]">{logoFile ? logoFile.name : "Mevcut Logo"}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-8 w-8 text-gray-400" />
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-700">Logo Yüklemek İçin Tıklayın</p>
+                        <p className="text-[11px] text-gray-400 font-medium mt-0.5">Önerilen boyut: 512x512 px (PNG/JPG)</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="mt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer">
+                  İptal
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={saving}
+                  className="px-5 py-2.5 text-sm font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
+                >
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Değişiklikleri Kaydet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Ortak Gizli Dosya Seçici */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        accept="image/*" 
+        className="hidden" 
+        onChange={(e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setCropImageSrc(reader.result);
+              setIsCropModalOpen(true);
+            };
+            reader.readAsDataURL(file);
+          }
+          e.target.value = "";
+        }}
+      />
+
+      {/* Resim Kırpma / Yakınlaştırma Modalı */}
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={cropImageSrc}
+        onClose={() => setIsCropModalOpen(false)}
+        onConfirm={handleCropConfirm}
+        circular={false}
+        title="Üniversite Logosunu Düzenle"
+      />
 
     </div>
   );

@@ -45,7 +45,14 @@ export default function EventDetailScreen() {
           title: data.title,
           description: data.description,
           category: data.category,
-          date: data.date ? new Date(data.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          date: data.date 
+            ? (() => {
+                const d = new Date(data.date);
+                const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+                const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                return data.end_time ? `${datePart} ${timePart} – ${data.end_time}` : `${datePart} ${timePart}`;
+              })()
+            : '',
           location: data.location,
           university: data.universities?.name || 'Bilinmeyen Üniversite',
           universityLogo: data.universities?.logo_url,

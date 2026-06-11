@@ -62,7 +62,14 @@ export default function Discover() {
           title: ev.title,
           description: ev.description,
           category: ev.category,
-          date: ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "",
+          date: ev.date 
+            ? (() => {
+                const d = new Date(ev.date);
+                const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+                const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                return ev.end_time ? `${datePart} ${timePart} – ${ev.end_time}` : `${datePart} ${timePart}`;
+              })()
+            : "",
           location: ev.location,
           university: ev.universities?.name || "Bilinmeyen Üniversite",
           universityLogo: ev.universities?.logo_url,

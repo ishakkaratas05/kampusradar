@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2, Users, School, BadgeCheck } from "lucide-react";
+import { Plus, ArrowLeft, Calendar, MapPin, X, FileText, CheckCircle, Clock, XCircle, Sparkles, Loader2, UploadCloud, AlertTriangle, Check, RefreshCw, Trash2, Users, School, BadgeCheck, Edit, GraduationCap, Music, Palette, Trophy, Cpu, Leaf } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import ProfileDropdown from "../components/ProfileDropdown";
@@ -12,6 +12,21 @@ export default function OrganizerDashboard() {
   const navigate = useNavigate();
   const { user, profile, loading: authLoading, signOut } = useAuth();
 
+  const formatEventDate = (dateStr, endTimeStr) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const datePart = d.toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const timePart = d.toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      if (endTimeStr) {
+        return `${datePart} ${timePart} – ${endTimeStr}`;
+      }
+      return `${datePart} ${timePart}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const [myEvents, setMyEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -20,6 +35,24 @@ export default function OrganizerDashboard() {
 
   const [aiPreview, setAiPreview] = useState({ isOpen: false, url: "", blob: null, isLoading: false, hasError: false });
   const [errorModal, setErrorModal] = useState({ isOpen: false, message: "" });
+  const [aiInfoModalOpen, setAiInfoModalOpen] = useState(false);
+  const [aiKeywords, setAiKeywords] = useState("");
+  const [aiTone, setAiTone] = useState("friendly");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState("");
+  const [aiError, setAiError] = useState(""); // inline error inside the modal
+  const [aiErrorType, setAiErrorType] = useState(""); // "busy" | "error" | ""
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [posterTemplate, setPosterTemplate] = useState("classic"); // "classic" | "centered" | "minimal"
+  const [posterPaletteIndex, setPosterPaletteIndex] = useState(0);
+  const [posterBgType, setPosterBgType] = useState("preset_gradient"); // "preset_gradient" | "custom_gradient" | "image"
+  const [posterBgQuery, setPosterBgQuery] = useState("concert");
+  const [posterBgImageSig, setPosterBgImageSig] = useState(Math.random().toString());
+  const [posterBgImageLoading, setPosterBgImageLoading] = useState(false);
+  const [customColors, setCustomColors] = useState(["#6366f1", "#a855f7", "#3b82f6"]);
+  const [posterPattern, setPosterPattern] = useState("circles_lines"); // "circles_lines" | "grid" | "triangles" | "stripes" | "none"
+  const [posterImageOverlay, setPosterImageOverlay] = useState("dark"); // "dark" | "light"
+
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, eventId: null });
   const [viewEvent, setViewEvent] = useState(null);
   const [manageEvent, setManageEvent] = useState(null);
@@ -35,6 +68,25 @@ export default function OrganizerDashboard() {
     const regex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
     return regex.test(timeStr);
   };
+  const handleOpenWizard = () => {
+    let defaultQuery = "concert";
+    const cat = newEvent.category;
+    if (cat === "Seminer / Konferans") defaultQuery = "seminar,conference";
+    else if (cat === "Eğitim / Atölye") defaultQuery = "workshop,education";
+    else if (cat === "Konser / Müzik") defaultQuery = "concert,music";
+    else if (cat === "Sergi / Sanat") defaultQuery = "art,exhibition";
+    else if (cat === "Spor / Turnuva") defaultQuery = "sports,stadium";
+    else if (cat === "Tiyatro / Gösteri") defaultQuery = "theater,show";
+    else if (cat === "Sosyal Sorumluluk") defaultQuery = "charity,community";
+    else if (cat === "Yarışma") defaultQuery = "competition,contest";
+    else if (cat) defaultQuery = cat.toLowerCase();
+
+    setPosterBgQuery(defaultQuery);
+    setPosterBgImageSig(Math.random().toString());
+    setPosterBgImageLoading(false);
+    setIsWizardOpen(true);
+  };
+
 
   const handleTimeChange = (e, setter) => {
     let val = e.target.value.replace(/[^0-9]/g, "");
@@ -160,6 +212,7 @@ export default function OrganizerDashboard() {
   };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [newEvent, setNewEvent] = useState({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
   const [customCategory, setCustomCategory] = useState("");
   const [universityName, setUniversityName] = useState("");
@@ -205,6 +258,113 @@ export default function OrganizerDashboard() {
     fetchUni();
   }, [profile]);
 
+  const aiAbortControllerRef = useRef(null);
+
+  const generateDescriptionWithGemini = async () => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    aiAbortControllerRef.current = controller;
+
+    setAiLoading(true);
+    setAiError("");
+    setAiErrorType("");
+    
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setAiLoading(false);
+      setAiError("API anahtarı bulunamadı.");
+      setAiErrorType("error");
+      return;
+    }
+
+    let toneDirectives = "";
+    if (aiTone === "friendly") {
+      toneDirectives = "öğrenci dostu, samimi, dinamik ve üniversite gençliğine hitap eden bir dil kullan.";
+    } else if (aiTone === "academic") {
+      toneDirectives = "resmi, ciddi, kurumsal, akademik kurallara uygun ve saygın bir dil kullan.";
+    } else if (aiTone === "exciting") {
+      toneDirectives = "heyecan uyandıran, davetkar, coşkulu, katılımı teşvik eden enerjik bir dil kullan.";
+    }
+
+    const prompt = `
+      Sen bir üniversite etkinlik organizatör yardımcısısın.
+      Aşağıdaki detaylara sahip bir üniversite etkinliği için yaratıcı, ilgi çekici, bilgilendirici ve Türkçe kurallarına uygun bir açıklama yazısı oluştur.
+      
+      Etkinlik Başlığı: "${newEvent.title || 'Belirtilmedi'}"
+      Etkinlik Kategorisi: "${newEvent.category || 'Genel'}"
+      Ek Bilgiler/Detaylar: "${aiKeywords || 'Herhangi bir detay belirtilmedi.'}"
+      
+      Dil Kuralları ve Tarz:
+      - ${toneDirectives}
+      - KESİNLİKLE HİÇBİR EMOJİ KULLANMA. Metinde tek bir emoji (🎉, 🚀 vb.) dahi olmamalı, tamamen harflerden oluşmalı.
+      - Afişteki açıklama alanını en verimli şekilde kullanabilmemiz için metni ortalama 400-450 karakter (yaklaşık 60-70 kelime) uzunluğunda oluştur.
+      - Yazıda tarih, saat veya konum bilgisi için yer tutucular ekleme; sadece açıklama içeriğine odaklan.
+      - Metin paragraf düzeninde olsun ve gerekiyorsa çok kısa maddeler içerebilsin.
+      - Sadece etkinlik açıklamasını döndür, başında veya sonunda 'İşte açıklamanız:' gibi ekstra açıklamalar ekleme.
+    `;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          signal: controller.signal
+        }
+      );
+
+      // HTTP düzeyi hata tespiti
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        const status = response.status;
+        const apiMsg = (errJson.error?.message || "").toLowerCase();
+        if (status === 429 || status === 503 || apiMsg.includes("high demand") || apiMsg.includes("quota") || apiMsg.includes("overloaded") || apiMsg.includes("resource_exhausted")) {
+          throw Object.assign(new Error("busy"), { errorType: "busy" });
+        }
+        throw Object.assign(new Error(errJson.error?.message || `HTTP ${status}`), { errorType: "error" });
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        setAiResult(text.trim());
+      } else {
+        const bodyMsg = (data.error?.message || "").toLowerCase();
+        if (bodyMsg.includes("high demand") || bodyMsg.includes("quota") || bodyMsg.includes("overloaded") || bodyMsg.includes("resource_exhausted")) {
+          throw Object.assign(new Error("busy"), { errorType: "busy" });
+        }
+        throw Object.assign(new Error(data.error?.message || "Geçersiz yanıt"), { errorType: "error" });
+      }
+    } catch (err) {
+      if (err.name === "AbortError") {
+        // Kullanıcı iptal etti, sessizce çık
+      } else if (err.errorType === "busy") {
+        setAiErrorType("busy");
+        setAiError("Şu an yapay zeka sihirbazımızda yoğunluk var.");
+      } else {
+        setAiErrorType("error");
+        setAiError("Açıklama üretilirken bir sorun oluştu. Lütfen tekrar deneyin.");
+        console.error("Gemini API Error:", err.message);
+      }
+    } finally {
+      if (aiAbortControllerRef.current === controller) {
+        setAiLoading(false);
+        aiAbortControllerRef.current = null;
+      }
+    }
+  };
+
+  const handleCancelAiGeneration = () => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+      aiAbortControllerRef.current = null;
+    }
+    setAiLoading(false);
+  };
+
   const handleDeleteConfirm = async () => {
     if (!deleteModal.eventId) return;
     
@@ -231,11 +391,79 @@ export default function OrganizerDashboard() {
   };
 
   const handleOpenAddModal = () => {
+    setEditingEventId(null);
     setNewEvent({ title: "", category: "", date: "", location: "", description: "", capacity: "", image_url: "", fileToUpload: null, requires_approval: false });
     setCustomCategory("");
     setEventDate("");
     setEventTime("12:00");
     setEventEndTime("");
+    setIsAddModalOpen(true);
+  };
+
+  const handleOpenEditModal = (ev) => {
+    setEditingEventId(ev.id);
+    
+    // Bitiş saatini ve temiz açıklamayı ayır (Öncelikli olarak end_time sütunundan oku, yoksa açıklamadan parse et)
+    let extractedEndTime = ev.end_time || "";
+    let cleanDescription = ev.description || "";
+    if (!extractedEndTime && ev.description && ev.description.startsWith("Bitiş Saati: ")) {
+      const match = ev.description.match(/^Bitiş Saati: (\d{2}:\d{2})\n\n([\s\S]*)$/);
+      if (match) {
+        extractedEndTime = match[1];
+        cleanDescription = match[2];
+      }
+    }
+
+    // Tarih ve saati ayır (Yerel saat dilimine göre)
+    let extractedDate = "";
+    let extractedTime = "12:00";
+    if (ev.date) {
+      const dateObj = new Date(ev.date);
+      if (!isNaN(dateObj.getTime())) {
+        const year = dateObj.getFullYear();
+        const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const day = String(dateObj.getDate()).padStart(2, "0");
+        extractedDate = `${year}-${month}-${day}`;
+        
+        const hours = String(dateObj.getHours()).padStart(2, "0");
+        const minutes = String(dateObj.getMinutes()).padStart(2, "0");
+        extractedTime = `${hours}:${minutes}`;
+      }
+    }
+
+    // Kategori kontrolü
+    const isStandardCategory = ["Eğlence", "Kültür / Sanat", "Spor", "Eğitim / Kariyer", "Teknoloji", "Sosyal Sorumluluk"].includes(ev.category);
+    if (!isStandardCategory && ev.category) {
+      setNewEvent({
+        title: ev.title || "",
+        category: "Diğer",
+        date: ev.date || "",
+        location: ev.location || "",
+        description: cleanDescription,
+        capacity: ev.capacity ? String(ev.capacity) : "",
+        image_url: ev.image_url || "",
+        fileToUpload: null,
+        requires_approval: ev.requires_approval || false
+      });
+      setCustomCategory(ev.category);
+    } else {
+      setNewEvent({
+        title: ev.title || "",
+        category: ev.category || "",
+        date: ev.date || "",
+        location: ev.location || "",
+        description: cleanDescription,
+        capacity: ev.capacity ? String(ev.capacity) : "",
+        image_url: ev.image_url || "",
+        fileToUpload: null,
+        requires_approval: ev.requires_approval || false
+      });
+      setCustomCategory("");
+    }
+
+    setEventDate(extractedDate);
+    setEventTime(extractedTime);
+    setEventEndTime(extractedEndTime);
     setIsAddModalOpen(true);
   };
 
@@ -293,34 +521,66 @@ export default function OrganizerDashboard() {
         finalCategory = customCategory.trim();
       }
 
-      // Eğer bitiş saati varsa, açıklamaya ekle
-      const finalDescription = eventEndTime 
-        ? `Bitiş Saati: ${eventEndTime}\n\n${newEvent.description}` 
-        : newEvent.description;
+      // Bitiş saatini artık açıklamaya eklemiyoruz, doğrudan end_time sütununda saklayacağız.
+      const finalDescription = newEvent.description;
 
-      // 2. Etkinlik verisini veritabanına kaydet
-      const combinedDate = `${eventDate}T${eventTime}:00`;
-      const { data, error } = await supabase
-        .from("events")
-        .insert([{
-          title: newEvent.title,
-          category: finalCategory,
-          date: combinedDate,
-          location: newEvent.location,
-          description: finalDescription,
-          capacity: newEvent.capacity ? parseInt(newEvent.capacity, 10) : null,
-          image_url: finalImageUrl || null,
-          university_id: profile.university_id,
-          organizer_id: user.id,
-          status: "pending",
-          requires_approval: newEvent.requires_approval
-        }])
-        .select();
+      // 2. Etkinlik verisini veritabanına kaydet veya güncelle (Türkiye Saati: UTC+3)
+      const combinedDate = `${eventDate}T${eventTime}:00+03:00`;
+      let queryResult;
 
+      if (editingEventId) {
+        queryResult = await supabase
+          .from("events")
+          .update({
+            title: newEvent.title,
+            category: finalCategory,
+            date: combinedDate,
+            location: newEvent.location,
+            description: finalDescription,
+            capacity: newEvent.capacity ? parseInt(newEvent.capacity, 10) : null,
+            image_url: finalImageUrl || null,
+            end_time: eventEndTime || null,
+            status: "pending", // Güncellendiğinde tekrar onaya düşer
+            requires_approval: newEvent.requires_approval
+          })
+          .eq("id", editingEventId)
+          .select(`
+            *,
+            event_participants(status)
+          `);
+      } else {
+        queryResult = await supabase
+          .from("events")
+          .insert([{
+            title: newEvent.title,
+            category: finalCategory,
+            date: combinedDate,
+            location: newEvent.location,
+            description: finalDescription,
+            capacity: newEvent.capacity ? parseInt(newEvent.capacity, 10) : null,
+            image_url: finalImageUrl || null,
+            university_id: profile.university_id,
+            organizer_id: user.id,
+            end_time: eventEndTime || null,
+            status: "pending",
+            requires_approval: newEvent.requires_approval
+          }])
+          .select(`
+            *,
+            event_participants(status)
+          `);
+      }
+
+      const { data, error } = queryResult;
       if (error) throw error;
 
-      setMyEvents(prev => [data[0], ...prev]);
+      if (editingEventId) {
+        setMyEvents(prev => prev.map(ev => ev.id === editingEventId ? data[0] : ev));
+      } else {
+        setMyEvents(prev => [data[0], ...prev]);
+      }
       setIsAddModalOpen(false);
+      setEditingEventId(null);
       
       if (newEvent.image_url && newEvent.image_url.startsWith('blob:')) {
         URL.revokeObjectURL(newEvent.image_url);
@@ -338,6 +598,17 @@ export default function OrganizerDashboard() {
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Dosya boyutu sınırı kontrolü (5 MB)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      setErrorModal({ 
+        isOpen: true, 
+        message: "Seçtiğiniz dosya çok büyük. Afiş görseli maksimum 5 MB boyutunda olmalıdır." 
+      });
+      e.target.value = null;
+      return;
+    }
 
     // Önceki blob URL'i varsa temizle (bellek sızıntısını önler)
     if (newEvent.image_url && newEvent.image_url.startsWith('blob:')) {
@@ -357,241 +628,651 @@ export default function OrganizerDashboard() {
 
   // ========== CANVAS AFİŞ ÜRETİCİ ==========
   const POSTER_PALETTES = [
-    { bg: ['#6366f1','#8b5cf6','#a855f7'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#4f46e5' },
-    { bg: ['#0f172a','#1e293b','#334155'], text: '#f1f5f9', accent: 'rgba(99,102,241,0.18)', badge: '#6366f1' },
-    { bg: ['#dc2626','#f97316','#fbbf24'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#b91c1c' },
-    { bg: ['#059669','#10b981','#34d399'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#047857' },
-    { bg: ['#2563eb','#3b82f6','#60a5fa'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#1d4ed8' },
-    { bg: ['#7c3aed','#a855f7','#d946ef'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#6d28d9' },
-    { bg: ['#0f172a','#581c87','#7c3aed'], text: '#f1f5f9', accent: 'rgba(167,139,250,0.15)', badge: '#7c3aed' },
-    { bg: ['#0c4a6e','#0284c7','#38bdf8'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#0369a1' },
+    // --- Karanlık Temalar ---
+    { name: "Galaksi Moru", bg: ['#6366f1','#8b5cf6','#a855f7'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#4f46e5', isLight: false },
+    { name: "Gece Mavisi", bg: ['#0f172a','#1e293b','#334155'], text: '#f1f5f9', accent: 'rgba(99,102,241,0.18)', badge: '#6366f1', isLight: false },
+    { name: "Gün Batımı", bg: ['#dc2626','#f97316','#fbbf24'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#b91c1c', isLight: false },
+    { name: "Zümrüt Yeşili", bg: ['#059669','#10b981','#34d399'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#047857', isLight: false },
+    { name: "Okyanus Mavi", bg: ['#2563eb','#3b82f6','#60a5fa'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#1d4ed8', isLight: false },
+    { name: "Neon Pembe", bg: ['#7c3aed','#a855f7','#d946ef'], text: '#ffffff', accent: 'rgba(255,255,255,0.12)', badge: '#6d28d9', isLight: false },
+    { name: "Kozmik Siyah", bg: ['#0f172a','#581c87','#7c3aed'], text: '#f1f5f9', accent: 'rgba(167,139,250,0.15)', badge: '#7c3aed', isLight: false },
+    { name: "Açık Gökyüzü", bg: ['#0c4a6e','#0284c7','#38bdf8'], text: '#ffffff', accent: 'rgba(255,255,255,0.10)', badge: '#0369a1', isLight: false },
+
+    // --- Aydınlık Temalar ---
+    { name: "İnci Beyazı", bg: ['#f8fafc', '#e2e8f0', '#cbd5e1'], text: '#0f172a', accent: 'rgba(15,23,42,0.06)', badge: '#0f172a', isLight: true },
+    { name: "Krem Esintisi", bg: ['#fafaf9', '#f5f5f4', '#d6d3d1'], text: '#1c1917', accent: 'rgba(28,25,23,0.06)', badge: '#78716c', isLight: true },
+    { name: "Limon Sorbe", bg: ['#fffbeb', '#fef3c7', '#fde68a'], text: '#78350f', accent: 'rgba(120,53,15,0.05)', badge: '#d97706', isLight: true },
+    { name: "Taze Bahar", bg: ['#f0fdf4', '#dcfce7', '#bbf7d0'], text: '#14532d', accent: 'rgba(20,83,45,0.05)', badge: '#16a34a', isLight: true },
+    { name: "Bulut Pembe", bg: ['#fff1f2', '#ffe4e6', '#fecdd3'], text: '#881337', accent: 'rgba(136,19,55,0.05)', badge: '#e11d48', isLight: true },
+    { name: "Hafif Deniz", bg: ['#f0f9ff', '#e0f2fe', '#bae6fd'], text: '#0c4a6e', accent: 'rgba(12,74,110,0.05)', badge: '#0284c7', isLight: true },
+    { name: "Nane Ferahlığı", bg: ['#f0fdfa', '#ccfbf1', '#99f6e4'], text: '#0f766e', accent: 'rgba(15,118,110,0.05)', badge: '#0d9488', isLight: true },
+    { name: "Zarif Lavanta", bg: ['#faf5ff', '#f3e8ff', '#e9d5ff'], text: '#6b21a8', accent: 'rgba(107,33,168,0.05)', badge: '#9333ea', isLight: true },
+  ];
+
+  const POPULAR_DARK_GRADIENTS = [
+    { name: "Gece Yarısı", colors: ["#0f172a", "#1e293b", "#3b82f6"] },
+    { name: "Kızıl Batan Güneş", colors: ["#dc2626", "#ea580c", "#eab308"] },
+    { name: "Mor Yağmur", colors: ["#4c1d95", "#7c3aed", "#c084fc"] },
+    { name: "Zümrüt", colors: ["#064e3b", "#059669", "#34d399"] },
+    { name: "Derin Okyanus", colors: ["#1e3a8a", "#3b82f6", "#60a5fa"] },
+    { name: "Neon Gece", colors: ["#311042", "#701a75", "#f43f5e"] },
+    { name: "Kömür Gri", colors: ["#18181b", "#27272a", "#52525b"] },
+    { name: "Orman Gölgesi", colors: ["#022c22", "#065f46", "#10b981"] }
+  ];
+
+  const POPULAR_LIGHT_GRADIENTS = [
+    { name: "Pamuk Şeker", colors: ["#ffd6e8", "#ffecd2", "#c1e3ff"] },
+    { name: "Kuzey Işıkları", colors: ["#e0f2fe", "#e0e7ff", "#fae8ff"] },
+    { name: "Lavanta Rüzgarı", colors: ["#faf5ff", "#f3e8ff", "#e9d5ff"] },
+    { name: "Limon Nane", colors: ["#fef9c3", "#f0fdf4", "#ccfbf1"] },
+    { name: "Şeftali Yumuşaklığı", colors: ["#fff7ed", "#ffedd5", "#fed7aa"] },
+    { name: "Berrak Deniz", colors: ["#ecfeff", "#e0f7fa", "#b2ebf2"] },
+    { name: "Tatlı Gül", colors: ["#fff1f2", "#ffe4e6", "#fecdd3"] },
+    { name: "Sıcak Kum", colors: ["#fafaf9", "#f5f5f4", "#e7e5e4"] }
   ];
 
   const wrapText = (ctx, text, maxWidth) => {
-    const words = text.split(' ');
+    const paragraphs = text.split('\n');
     const lines = [];
-    let currentLine = '';
-    for (const word of words) {
-      const testLine = currentLine ? currentLine + ' ' + word : word;
-      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
+    for (const para of paragraphs) {
+      if (!para.trim()) {
+        lines.push("");
+        continue;
       }
+      const words = para.split(' ');
+      let currentLine = '';
+      for (const word of words) {
+        if (ctx.measureText(word).width > maxWidth) {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = '';
+          }
+          let tempWord = '';
+          for (let i = 0; i < word.length; i++) {
+            const char = word[i];
+            const testWord = tempWord + char;
+            if (ctx.measureText(testWord).width > maxWidth) {
+              lines.push(tempWord);
+              tempWord = char;
+            } else {
+              tempWord = testWord;
+            }
+          }
+          currentLine = tempWord;
+        } else {
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+      }
+      if (currentLine) lines.push(currentLine);
     }
-    if (currentLine) lines.push(currentLine);
     return lines;
   };
 
-  const generateCanvasPoster = (title, category, date, endTime, location, description, uniName, clubName) => {
-    const W = 768, H = 1024;
+  const generateCanvasPoster = async (
+    title, category, date, endTime, location, description, uniName, clubName, uniLogoUrl, clubLogoUrl,
+    templateStyle = "classic", paletteIdx = 0, bgType = "preset_gradient", bgImageUrl = "",
+    customColors = ["#6366f1", "#a855f7", "#3b82f6"], pattern = "circles_lines", imageOverlay = "dark"
+  ) => {
+    const W = 1080, H = 1350;
+    const M = 80;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    const palette = POSTER_PALETTES[Math.floor(Math.random() * POSTER_PALETTES.length)];
-
-    // 1. Gradient arka plan
-    const grad = ctx.createLinearGradient(0, 0, W * 0.3, H);
-    palette.bg.forEach((c, i) => grad.addColorStop(i / (palette.bg.length - 1), c));
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    // 2. Dekoratif daireler
-    for (let i = 0; i < 5; i++) {
-      ctx.beginPath();
-      const r = 80 + Math.random() * 200;
-      ctx.arc(Math.random() * W, Math.random() * H, r, 0, Math.PI * 2);
-      ctx.fillStyle = palette.accent;
-      ctx.fill();
-    }
-
-    // 3. Dekoratif çizgiler
-    ctx.strokeStyle = palette.accent;
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(Math.random() * W, Math.random() * H);
-      ctx.lineTo(Math.random() * W, Math.random() * H);
-      ctx.stroke();
-    }
-
-    // 4. Üst dekoratif çizgi
-    ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.3;
-    ctx.fillRect(60, 60, 100, 4);
-    ctx.globalAlpha = 1;
-
-    // 5. Üniversite ve Topluluk Adı
-    ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.9;
-    ctx.fillText(`T.C. ${uniName || 'Üniversite'}`, 60, 95);
-    
-    ctx.font = '600 16px "Segoe UI", Arial, sans-serif';
-    ctx.globalAlpha = 0.7;
-    ctx.fillText(clubName || 'Öğrenci Topluluğu', 60, 125);
-    ctx.globalAlpha = 1;
-
-    // 6. Kategori badge
-    if (category) {
-      const badgeText = category.toLocaleUpperCase('tr-TR');
-      ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
-      const badgeW = ctx.measureText(badgeText).width + 32;
-      ctx.fillStyle = palette.badge;
-      ctx.globalAlpha = 0.9;
-      const roundRect = (x, y, w, h, r) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-        ctx.fill();
-      };
-      roundRect(60, 160, badgeW, 36, 8);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(badgeText, 76, 184);
-    }
-
-    // 7. Ana başlık (büyük, kalın, word-wrap)
-    ctx.font = 'bold 56px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = palette.text;
-    const titleLines = wrapText(ctx, title, W - 120);
-    const titleY = category ? 260 : 220;
-    titleLines.forEach((line, i) => {
-      ctx.fillText(line, 60, titleY + i * 68);
-    });
-
-    let currentY = titleY + (titleLines.length * 68) + 10;
-
-    // 7.5 Açıklama Metni (Detaylı Bilgi)
-    if (description) {
-      ctx.font = 'normal 24px "Segoe UI", Arial, sans-serif';
-      ctx.fillStyle = palette.text;
-      ctx.globalAlpha = 0.85;
-      
-      const descLines = wrapText(ctx, description, W - 120);
-      const maxDescLines = 5; // En fazla 5 satır açıklama sığdır
-      for (let i = 0; i < Math.min(descLines.length, maxDescLines); i++) {
-        let text = descLines[i];
-        if (i === maxDescLines - 1 && descLines.length > maxDescLines) {
-           text += '...';
+    const loadImage = (src) => {
+      return new Promise((resolve) => {
+        if (!src) {
+          resolve(null);
+          return;
         }
-        ctx.fillText(text, 60, currentY + i * 36);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    };
+
+    const [uniLogoImg, clubLogoImg, bgImg] = await Promise.all([
+      loadImage(uniLogoUrl),
+      loadImage(clubLogoUrl),
+      bgType === "image" && bgImageUrl ? loadImage(bgImageUrl) : Promise.resolve(null)
+    ]);
+
+    // Helper to calculate color luminance to distinguish light vs dark backgrounds
+    const getLuminance = (hex) => {
+      if (!hex || hex.charAt(0) !== '#') return 0;
+      const r = parseInt(hex.substring(1, 3), 16) || 0;
+      const g = parseInt(hex.substring(3, 5), 16) || 0;
+      const b = parseInt(hex.substring(5, 7), 16) || 0;
+      return 0.299 * r + 0.587 * g + 0.114 * b;
+    };
+
+    let isCustomGradientLight = false;
+    if (bgType === "custom_gradient") {
+      const activeColors = customColors.filter(Boolean);
+      if (activeColors.length > 0) {
+        const avgLuminance = activeColors.reduce((sum, color) => sum + getLuminance(color), 0) / activeColors.length;
+        isCustomGradientLight = avgLuminance > 128;
       }
-      ctx.globalAlpha = 1;
     }
 
-    // 8. Alt bilgi bölgesi — yarı-saydam bar
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(0, H - 220, W, 220);
+    const palette = POSTER_PALETTES[paletteIdx] || POSTER_PALETTES[0];
+    const activeIsLight = bgType === "image" 
+      ? (imageOverlay === "light") 
+      : (bgType === "custom_gradient" ? isCustomGradientLight : palette.isLight);
 
-    // 9. Tarih, Saat ve Konum bilgisi (Emoji yerine vektörel ikonlar)
-    const drawIcon = (type, x, y, size) => {
-      ctx.save();
-      ctx.strokeStyle = palette.text;
-      ctx.fillStyle = palette.text;
-      ctx.lineWidth = 2.5;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
+    const activeText = bgType === "preset_gradient" ? palette.text : (activeIsLight ? '#0f172a' : '#ffffff');
+    // Boost accent opacity to ensure shapes are visible on both light and dark themes
+    const activeAccent = activeIsLight ? 'rgba(15, 23, 42, 0.15)' : 'rgba(255, 255, 255, 0.18)';
 
-      if (type === 'calendar') {
-        // Takvim gövdesi
-        ctx.strokeRect(x, y + 3, size, size - 3);
-        // Üst şerit
-        ctx.fillRect(x, y + 3, size, 4);
-        // Halkalar
-        ctx.fillRect(x + 4, y, 2.5, 5);
-        ctx.fillRect(x + size - 6.5, y, 2.5, 5);
-        // Izgara noktaları
-        ctx.fillRect(x + 4, y + 10, 2, 2);
-        ctx.fillRect(x + 10, y + 10, 2, 2);
-        ctx.fillRect(x + 16, y + 10, 2, 2);
-        ctx.fillRect(x + 4, y + 15, 2, 2);
-        ctx.fillRect(x + 10, y + 15, 2, 2);
-        ctx.fillRect(x + 16, y + 15, 2, 2);
-      } else if (type === 'clock') {
-        // Saat dairesi
+    // 1. Arka plan çizimi
+    if (bgType === "image") {
+      if (bgImg) {
+        // Draw image in cover mode (aspect ratio preserving)
+        const imgRatio = bgImg.width / bgImg.height;
+        const canvasRatio = W / H;
+        let drawWidth, drawHeight, drawX, drawY;
+
+        if (imgRatio > canvasRatio) {
+          drawHeight = H;
+          drawWidth = H * imgRatio;
+          drawX = (W - drawWidth) / 2;
+          drawY = 0;
+        } else {
+          drawWidth = W;
+          drawHeight = W / imgRatio;
+          drawX = 0;
+          drawY = (H - drawHeight) / 2;
+        }
+        ctx.drawImage(bgImg, drawX, drawY, drawWidth, drawHeight);
+      } else {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+      }
+      // Textlerin okunabilmesi için görselin üstüne yarı saydam katman çiz
+      ctx.fillStyle = imageOverlay === "light" ? 'rgba(255, 255, 255, 0.72)' : 'rgba(15, 23, 42, 0.72)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (bgType === "custom_gradient") {
+      const grad = ctx.createLinearGradient(0, 0, W * 0.3, H);
+      const activeColors = customColors.filter(Boolean);
+      if (activeColors.length > 0) {
+        activeColors.forEach((c, i) => grad.addColorStop(i / (activeColors.length - 1), c));
+      } else {
+        grad.addColorStop(0, '#6366f1');
+        grad.addColorStop(1, '#a855f7');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      const grad = ctx.createLinearGradient(0, 0, W * 0.3, H);
+      palette.bg.forEach((c, i) => grad.addColorStop(i / (palette.bg.length - 1), c));
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 2 & 3. Desen Katmanı Çizimi
+    if (pattern === "circles_lines") {
+      // Dekoratif daireler
+      for (let i = 0; i < 5; i++) {
         ctx.beginPath();
-        ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
-        ctx.stroke();
-        // Akrep ve yelkovan
-        ctx.beginPath();
-        ctx.moveTo(x + size/2, y + size/2);
-        ctx.lineTo(x + size/2, y + 6); // yelkovan
-        ctx.moveTo(x + size/2, y + size/2);
-        ctx.lineTo(x + size/2 + 5, y + size/2); // akrep
-        ctx.stroke();
-      } else if (type === 'map-pin') {
-        const cx = x + size/2;
-        const cy = y + size/3 + 2;
-        const r = size/3.8;
-        
-        ctx.beginPath();
-        // Symmetrical teardrop shape using arc and lines
-        ctx.arc(cx, cy, r, 0.75 * Math.PI, 0.25 * Math.PI);
-        ctx.lineTo(cx, y + size - 1);
-        ctx.closePath();
-        ctx.stroke();
-        
-        // Inner circle dot
-        ctx.beginPath();
-        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        const r = 100 + Math.random() * 250;
+        ctx.arc(Math.random() * W, Math.random() * H, r, 0, Math.PI * 2);
+        ctx.fillStyle = activeAccent;
         ctx.fill();
       }
+      // Dekoratif çizgiler
+      ctx.strokeStyle = activeAccent;
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * W, Math.random() * H);
+        ctx.lineTo(Math.random() * W, Math.random() * H);
+        ctx.stroke();
+      }
+    } else if (pattern === "grid") {
+      // Kareli Desen
+      ctx.strokeStyle = activeIsLight ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 1.5;
+      const gridSize = 45;
+      for (let x = 0; x < W; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 0; y < H; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+    } else if (pattern === "triangles") {
+      // Üçgenli Desen
+      ctx.fillStyle = activeAccent;
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        const x = Math.random() * W, y = Math.random() * H;
+        const size = 120 + Math.random() * 180;
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + size, y + size / 2);
+        ctx.lineTo(x - size / 2, y + size);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (pattern === "stripes") {
+      // Çizgili Desen
+      ctx.strokeStyle = activeAccent;
+      ctx.lineWidth = 14;
+      for (let i = -H; i < W; i += 140) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i + H, H);
+        ctx.stroke();
+      }
+    } else if (pattern === "dots") {
+      // Noktalı Desen
+      ctx.fillStyle = activeAccent;
+      const spacing = 45;
+      const radius = 3;
+      for (let x = spacing / 2; x < W; x += spacing) {
+        for (let y = spacing / 2; y < H; y += spacing) {
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (pattern === "waves") {
+      // Dalgalı Desen
+      ctx.strokeStyle = activeAccent;
+      ctx.lineWidth = 2.5;
+      const spacing = 60;
+      for (let y = -50; y < H + 50; y += spacing) {
+        ctx.beginPath();
+        for (let x = 0; x <= W; x += 15) {
+          const waveY = y + Math.sin(x * 0.015) * 15;
+          if (x === 0) ctx.moveTo(x, waveY);
+          else ctx.lineTo(x, waveY);
+        }
+        ctx.stroke();
+      }
+    } else if (pattern === "diamonds") {
+      // Baklava Deseni (Eğik Çizgiler)
+      ctx.strokeStyle = activeAccent;
+      ctx.lineWidth = 1.5;
+      const spacing = 60;
+      for (let i = -H; i < W + H; i += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i + H, H);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i - H, H);
+        ctx.stroke();
+      }
+    } else if (pattern === "hexagons") {
+      // Altıgen (6-gen) Desen
+      ctx.fillStyle = activeAccent;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        const cx = Math.random() * W;
+        const cy = Math.random() * H;
+        const r = 80 + Math.random() * 120;
+        for (let j = 0; j < 6; j++) {
+          const angle = (j * Math.PI) / 3;
+          const x = cx + r * Math.cos(angle);
+          const y = cy + r * Math.sin(angle);
+          if (j === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Helper function to draw circular images with white border
+    const drawCircularImage = (img, cx, cy, r) => {
+      if (!img) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+
+      // Border
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
       ctx.restore();
     };
 
-    let infoY = H - 165;
-    ctx.font = '600 20px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.85;
+    if (templateStyle === "centered") {
+      // 2. Dengeli Merkez Şablonu: Başlıklar ortada, logolar yanlarda
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = activeText;
+      
+      const uniText = uniName ? (uniName.startsWith("T.C.") ? uniName : `T.C. ${uniName}`) : 'T.C. Üniversite';
+      const clubText = clubName || 'Öğrenci Topluluğu';
+      
+      let uniFontSize = 30;
+      ctx.font = `bold ${uniFontSize}px "Segoe UI", Arial, sans-serif`;
+      let w1 = ctx.measureText(uniText).width;
+      while (w1 > 500 && uniFontSize > 18) {
+        uniFontSize -= 1;
+        ctx.font = `bold ${uniFontSize}px "Segoe UI", Arial, sans-serif`;
+        w1 = ctx.measureText(uniText).width;
+      }
+      ctx.globalAlpha = 0.9;
+      ctx.fillText(uniText, W / 2, 125);
+      
+      let clubFontSize = 22;
+      ctx.font = `600 ${clubFontSize}px "Segoe UI", Arial, sans-serif`;
+      let w2 = ctx.measureText(clubText).width;
+      while (w2 > 500 && clubFontSize > 14) {
+        clubFontSize -= 1;
+        ctx.font = `600 ${clubFontSize}px "Segoe UI", Arial, sans-serif`;
+        w2 = ctx.measureText(clubText).width;
+      }
+      ctx.globalAlpha = 0.7;
+      ctx.fillText(clubText, W / 2, 165);
+      ctx.restore();
 
+      const textWidth = Math.max(w1, w2);
+      const spacing = (textWidth / 2) + 70;
+      drawCircularImage(uniLogoImg, (W / 2) - spacing, 135, 45);
+      drawCircularImage(clubLogoImg, (W / 2) + spacing, 135, 45);
+    } else if (templateStyle === "minimal") {
+      // 3. Minimal Elit Şablonu: Logolar ortada yan yana, text altında
+      drawCircularImage(uniLogoImg, (W / 2) - 45, 120, 48);
+      drawCircularImage(clubLogoImg, (W / 2) + 45, 120, 48);
+
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = activeText;
+      ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
+      ctx.globalAlpha = 0.8;
+      ctx.fillText(`${uniName || 'Üniversite'} • ${clubName || 'Topluluğu'}`, W / 2, 210);
+      ctx.restore();
+
+      // İnce şık sınır çerçevesi
+      ctx.strokeStyle = activeIsLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 12;
+      ctx.strokeRect(30, 30, W - 60, H - 60);
+    } else {
+      // 1. Klasik Modern Şablonu (Default)
+      // 4. Üst dekoratif çizgi
+      ctx.fillStyle = activeText;
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(M, 80, 150, 6);
+      ctx.globalAlpha = 1;
+
+      // 5. Üniversite ve Topluluk Adı (Genişliğe göre otomatik ölçekleme)
+      const uniText = uniName ? (uniName.startsWith("T.C.") ? uniName : `T.C. ${uniName}`) : 'T.C. Üniversite';
+      const clubText = clubName || 'Öğrenci Topluluğu';
+      
+      let uniFontSize = 30;
+      const maxTextWidth = W - M - 260 - M; // Logo alanına taşmaması için
+      ctx.font = `bold ${uniFontSize}px "Segoe UI", Arial, sans-serif`;
+      let w1 = ctx.measureText(uniText).width;
+      while (w1 > maxTextWidth && uniFontSize > 18) {
+        uniFontSize -= 1;
+        ctx.font = `bold ${uniFontSize}px "Segoe UI", Arial, sans-serif`;
+        w1 = ctx.measureText(uniText).width;
+      }
+      ctx.fillStyle = activeText;
+      ctx.globalAlpha = 0.9;
+      ctx.fillText(uniText, M, 125);
+      
+      let clubFontSize = 22;
+      ctx.font = `600 ${clubFontSize}px "Segoe UI", Arial, sans-serif`;
+      let w2 = ctx.measureText(clubText).width;
+      while (w2 > maxTextWidth && clubFontSize > 14) {
+        clubFontSize -= 1;
+        ctx.font = `600 ${clubFontSize}px "Segoe UI", Arial, sans-serif`;
+        w2 = ctx.measureText(clubText).width;
+      }
+      ctx.globalAlpha = 0.7;
+      ctx.fillText(clubText, M, 165);
+      ctx.globalAlpha = 1;
+
+      drawCircularImage(uniLogoImg, W - M - 170, 125, 50);
+      drawCircularImage(clubLogoImg, W - M - 50, 125, 50);
+    }
+
+    // Text wrapping and layout height calculation (Dinamik dikey/yatay sığdırma ve taşma önleme)
+    let titleFontSize = 80;
+    let titleLineHeight = 96;
+    let descFontSize = 32;
+    let descLineHeight = 46;
+
+    ctx.font = `bold ${titleFontSize}px "Segoe UI", Arial, sans-serif`;
+    let titleLines = wrapText(ctx, title, W - (M * 2));
+    ctx.font = `normal ${descFontSize}px "Segoe UI", Arial, sans-serif`;
+    let descLines = description ? wrapText(ctx, description, W - 160) : [];
+    let actualDescLinesCount = Math.min(descLines.length, 8);
+
+    let titleHeight = titleLines.length * titleLineHeight;
+    let gap = description ? 40 : 0;
+    let descHeight = actualDescLinesCount * descLineHeight;
+    let totalHeight = titleHeight + gap + descHeight;
+
+    // Eğer dikey sığma alanı olan 740px'i aşıyorsa font boyutlarını kademeli olarak küçült
+    while (totalHeight > 740 && (titleFontSize > 44 || descFontSize > 22)) {
+      if (titleFontSize > 44) {
+        titleFontSize -= 4;
+        titleLineHeight = Math.round(titleFontSize * 1.2);
+        ctx.font = `bold ${titleFontSize}px "Segoe UI", Arial, sans-serif`;
+        titleLines = wrapText(ctx, title, W - (M * 2));
+      }
+      if (descFontSize > 22 && totalHeight > 740) {
+        descFontSize -= 2;
+        descLineHeight = Math.round(descFontSize * 1.4);
+        ctx.font = `normal ${descFontSize}px "Segoe UI", Arial, sans-serif`;
+        descLines = description ? wrapText(ctx, description, W - 160) : [];
+      }
+      actualDescLinesCount = Math.min(descLines.length, 8);
+      titleHeight = titleLines.length * titleLineHeight;
+      descHeight = actualDescLinesCount * descLineHeight;
+      totalHeight = titleHeight + gap + descHeight;
+    }
+
+    // Dikeyde başlık ve açıklama bloğunu ortalamak için başlangıç y konumu
+    const titleY = 200 + (860 - totalHeight) / 2;
+
+    // 7. Ana başlık (büyük, kalın, word-wrap, ORTALANMIŞ)
+    ctx.save();
+    ctx.font = `bold ${titleFontSize}px "Segoe UI", Arial, sans-serif`;
+    ctx.fillStyle = activeText;
+    ctx.textAlign = 'center';
+    titleLines.forEach((line, i) => {
+      ctx.fillText(line, W / 2, titleY + i * titleLineHeight);
+    });
+    ctx.restore();
+
+    let currentY = titleY + titleHeight + gap;
+
+    // 7.5 Açıklama Metni (Detaylı Bilgi - ORTALANMIŞ)
+    if (description) {
+      ctx.save();
+      ctx.font = `normal ${descFontSize}px "Segoe UI", Arial, sans-serif`;
+      ctx.fillStyle = activeText;
+      ctx.textAlign = 'center';
+      ctx.globalAlpha = 0.85;
+      
+      for (let i = 0; i < actualDescLinesCount; i++) {
+        let text = descLines[i];
+        if (i === 7 && descLines.length > 8) {
+           text += '...';
+        }
+        ctx.fillText(text, W / 2, currentY + i * descLineHeight);
+      }
+      ctx.restore();
+    }
+
+    // 8. Alt bölge — sadece info card'ın arkasına odaklı, tam alan değil
+    // (arka plan rengi burada çizilmeyecek, doğrudan info card çizilecek)
+
+    // 9. Tarih, Saat ve Konum — Yan yana kompakt info-card
+    let validCols = [];
     if (date) {
       try {
         const d = new Date(date);
         const dateStr = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        
-        // Tarih Satırı
-        drawIcon('calendar', 60, infoY - 18, 22);
-        ctx.fillText(`Tarih: ${dateStr}`, 94, infoY);
-        infoY += 38;
-
-        // Saat Satırı
-        drawIcon('clock', 60, infoY - 18, 22);
-        const displayTime = endTime ? `${timeStr} - ${endTime}` : timeStr;
-        ctx.fillText(`Saat: ${displayTime}`, 94, infoY);
-        infoY += 38;
+        validCols.push({ type: 'calendar', label: 'TARİH', text: dateStr });
+        validCols.push({ type: 'clock',    label: 'SAAT',  text: endTime ? `${timeStr} – ${endTime}` : timeStr });
       } catch(e) {}
     }
-
-    // 10. Konum bilgisi
     if (location) {
-      drawIcon('map-pin', 60, infoY - 18, 22);
-      ctx.fillText(`Konum: ${location}`, 94, infoY);
-      infoY += 38;
+      validCols.push({ type: 'map-pin', label: 'KONUM', text: location });
     }
+
+    if (validCols.length > 0) {
+      const cardH = 170;
+      const cardPadX = 60;
+      const cardY = H - cardH - 110;
+      const cardW = W - cardPadX * 2;
+      const cardX = cardPadX;
+      const radius = 24;
+
+      // Glassmorphism card arka planı
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cardX + radius, cardY);
+      ctx.lineTo(cardX + cardW - radius, cardY);
+      ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
+      ctx.lineTo(cardX + cardW, cardY + cardH - radius);
+      ctx.quadraticCurveTo(cardX + cardW, cardY + cardH, cardX + cardW - radius, cardY + cardH);
+      ctx.lineTo(cardX + radius, cardY + cardH);
+      ctx.quadraticCurveTo(cardX, cardY + cardH, cardX, cardY + cardH - radius);
+      ctx.lineTo(cardX, cardY + radius);
+      ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
+      ctx.closePath();
+
+      // Arka plan rengi (koyu temada siyah, açık temada beyaz, her ikisi de yarı saydam)
+      ctx.fillStyle = activeIsLight ? 'rgba(255,255,255,0.80)' : 'rgba(0,0,0,0.55)';
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 40;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // İnce kenarlık
+      ctx.strokeStyle = activeIsLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      // Her kolonu eşit genişlikte çiz
+      const colW = cardW / validCols.length;
+
+      validCols.forEach((col, idx) => {
+        const cx = cardX + colW * idx + colW / 2;
+        const iconSize = 36;
+        const ix = cx - iconSize / 2;
+        const iy = cardY + 24;
+
+        // Sütunlar arası dikey ayırıcı
+        if (idx > 0) {
+          ctx.save();
+          ctx.strokeStyle = activeIsLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.15)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(cardX + colW * idx, cardY + 20);
+          ctx.lineTo(cardX + colW * idx, cardY + cardH - 20);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // -- İkon --
+        ctx.save();
+        ctx.strokeStyle = activeText;
+        ctx.fillStyle = activeText;
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.9;
+
+        if (col.type === 'calendar') {
+          ctx.strokeRect(ix, iy + 3, iconSize, iconSize - 3);
+          ctx.fillRect(ix, iy + 3, iconSize, 4);
+          ctx.fillRect(ix + 5, iy, 3, 5);
+          ctx.fillRect(ix + iconSize - 8, iy, 3, 5);
+        } else if (col.type === 'clock') {
+          ctx.beginPath();
+          ctx.arc(ix + iconSize/2, iy + iconSize/2, iconSize/2, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(ix + iconSize/2, iy + iconSize/2);
+          ctx.lineTo(ix + iconSize/2, iy + 9);
+          ctx.moveTo(ix + iconSize/2, iy + iconSize/2);
+          ctx.lineTo(ix + iconSize/2 + 7, iy + iconSize/2);
+          ctx.stroke();
+        } else if (col.type === 'map-pin') {
+          const px = ix + iconSize/2;
+          const py = iy + iconSize/3 + 2;
+          const pr = iconSize/3.5;
+          ctx.beginPath();
+          ctx.arc(px, py, pr, 0.75*Math.PI, 0.25*Math.PI);
+          ctx.lineTo(px, iy + iconSize - 2);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // -- Küçük etiket (TARİH / SAAT / KONUM) --
+        ctx.save();
+        ctx.font = `600 18px "Segoe UI", Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = activeText;
+        ctx.globalAlpha = 0.45;
+        ctx.letterSpacing = '2px';
+        ctx.fillText(col.label, cx, iy + iconSize + 26);
+        ctx.restore();
+
+        // -- Ana metin --
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = activeText;
+        ctx.globalAlpha = 0.95;
+        let fs = 26;
+        ctx.font = `bold ${fs}px "Segoe UI", Arial, sans-serif`;
+        // Taşarsa küçült
+        while (ctx.measureText(col.text).width > colW - 30 && fs > 17) {
+          fs -= 1;
+          ctx.font = `bold ${fs}px "Segoe UI", Arial, sans-serif`;
+        }
+        ctx.fillText(col.text, cx, iy + iconSize + 58);
+        ctx.restore();
+      });
+    }
+
     ctx.globalAlpha = 1;
 
-    // 11. Alt çizgi dekorasyon ve KampüsRadar
-    ctx.fillStyle = palette.text;
-    ctx.globalAlpha = 0.15;
-    ctx.fillRect(60, H - 50, W - 120, 2);
-    ctx.globalAlpha = 0.5;
-    ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
-    const krText = 'KampüsRadar';
-    const krW = ctx.measureText(krText).width;
-    ctx.fillText(krText, W - 60 - krW, H - 20); // Alt sağ köşe
+    // 11. KampüsRadar marka yazısı — alt kısım
+    ctx.save();
+    ctx.font = 'bold 26px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = activeText;
+    ctx.globalAlpha = 0.40;
+    ctx.textAlign = 'center';
+    ctx.fillText('kampüsradar', W / 2, H - 38);
+    ctx.restore();
     ctx.globalAlpha = 1;
 
     return canvas;
@@ -614,9 +1295,15 @@ export default function OrganizerDashboard() {
     setIsGenerating(true);
 
     try {
-      const combinedDate = eventDate ? `${eventDate}T${eventTime}:00` : "";
+      const combinedDate = eventDate ? `${eventDate}T${eventTime}:00+03:00` : "";
+      
+      const enhancedQuery = `abstract,${posterBgQuery || 'texture'}`;
+      const bgImageUrl = posterBgType === "image"
+        ? `https://loremflickr.com/1080/1350/${encodeURIComponent(enhancedQuery)}?lock=${Math.floor(Number(posterBgImageSig) * 100000)}`
+        : "";
+
       // Canvas ile afiş üret
-      const canvas = generateCanvasPoster(
+      const canvas = await generateCanvasPoster(
         newEvent.title,
         newEvent.category,
         combinedDate,
@@ -624,11 +1311,18 @@ export default function OrganizerDashboard() {
         newEvent.location,
         newEvent.description,
         universityName,
-        profile?.full_name
+        profile?.full_name,
+        universityLogo,
+        profile?.logo_url,
+        posterTemplate,
+        posterPaletteIndex,
+        posterBgType,
+        bgImageUrl,
+        customColors,
+        posterPattern,
+        posterImageOverlay
       );
-
-      // Canvas'ı blob'a çevir
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
       const previewUrl = URL.createObjectURL(blob);
 
       setAiPreview({ isOpen: true, url: previewUrl, blob, isLoading: false, hasError: false });
@@ -659,7 +1353,7 @@ export default function OrganizerDashboard() {
   const handleRetryAIPreview = () => {
     if (aiPreview.url) URL.revokeObjectURL(aiPreview.url);
     setAiPreview({ isOpen: false, url: "", blob: null, isLoading: false, hasError: false });
-    handleAIImageGenerate();
+    setIsWizardOpen(true);
   };
 
   const now = new Date();
@@ -911,7 +1605,7 @@ export default function OrganizerDashboard() {
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 mt-1.5">{ev.title}</h3>
                   <div className="mt-2 flex items-center gap-4 text-xs font-medium text-gray-400">
-                    <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {ev.date ? new Date(ev.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ""}</span>
+                    <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {formatEventDate(ev.date, ev.end_time)}</span>
                     <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {ev.location}</span>
                   </div>
                   
@@ -928,7 +1622,7 @@ export default function OrganizerDashboard() {
                   </div>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-3">
+                <div className="shrink-0 flex flex-wrap items-center gap-2.5">
                   {ev.status === "approved" && (
                     <span className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1.5 rounded-xl text-xs font-bold border border-green-100">
                       <CheckCircle className="h-4 w-4" /> Yayınlandı (SKS Onaylı)
@@ -953,17 +1647,24 @@ export default function OrganizerDashboard() {
                   )}
                   <button 
                     onClick={(e) => { e.stopPropagation(); setManageEvent(ev); }}
-                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-200 transition"
+                    className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3.5 py-2 rounded-xl text-xs font-bold border border-indigo-200 transition cursor-pointer"
                     title="Katılımcıları Yönet"
                   >
-                    <Users className="h-4 w-4" /> Yönet
+                    <Users className="h-4 w-4 text-indigo-500" /> Yönet
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleOpenEditModal(ev); }}
+                    className="flex items-center gap-1.5 bg-slate-50 text-slate-700 hover:bg-slate-100 px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-200 transition cursor-pointer"
+                    title="Başvuruyu Düzenle"
+                  >
+                    <Edit className="h-4 w-4 text-slate-500" /> Düzenle
                   </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, eventId: ev.id }); }}
-                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                    className="flex items-center gap-1.5 bg-red-50 text-red-700 hover:bg-red-100 px-3.5 py-2 rounded-xl text-xs font-bold border border-red-200 transition cursor-pointer"
                     title="Başvuruyu Sil / Geri Çek"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4 text-red-500" /> Sil
                   </button>
                 </div>
               </div>
@@ -980,7 +1681,7 @@ export default function OrganizerDashboard() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50 shrink-0">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="h-5 w-5 text-slate-500" /> Yeni Etkinlik İzin Talebi
+                <FileText className="h-5 w-5 text-slate-500" /> {editingEventId ? "Etkinlik İzin Talebini Düzenle" : "Yeni Etkinlik İzin Talebi"}
               </h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
@@ -1113,7 +1814,21 @@ export default function OrganizerDashboard() {
                   </div>
 
                   <div className="flex-1 flex flex-col">
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Detaylı Açıklama</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-semibold text-gray-700">Detaylı Açıklama</label>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-xs font-bold transition px-2.5 py-1 rounded-lg border shadow-sm cursor-pointer hover:bg-slate-50"
+                        style={{ color: '#1a3050', borderColor: '#1a3050' }}
+                        onClick={() => {
+                          setAiInfoModalOpen(true);
+                        }}
+                        title="Yapay Zeka ile Açıklama Oluştur"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" style={{ color: '#1a3050' }} />
+                        AI ile Oluştur
+                      </button>
+                    </div>
                     <textarea 
                       required placeholder="SKS onay heyetinin görmesi için etkinlik detayları..."
                       value={newEvent.description} onChange={(e) => setNewEvent({...newEvent, description: e.target.value})}
@@ -1175,15 +1890,21 @@ export default function OrganizerDashboard() {
                         {isUploading ? "Yükleniyor..." : "Cihazdan Görsel Seç"}
                       </label>
                     </div>
-                    
                     <button 
                       type="button" 
-                      onClick={handleAIImageGenerate}
+                      onClick={() => {
+                        if (!newEvent.title) {
+                          setErrorModal({ isOpen: true, message: "Lütfen önce bir etkinlik başlığı girin. Yapay zeka başlığa uygun bir afiş tasarlayacaktır." });
+                          return;
+                        }
+                        handleOpenWizard();
+                      }}
                       disabled={isGenerating || isUploading}
-                      className="flex items-center justify-center gap-2 border border-purple-200 bg-purple-50 text-purple-700 rounded-xl px-4 py-3 hover:bg-purple-100 transition shadow-sm group cursor-pointer disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition shadow-sm group cursor-pointer disabled:opacity-50 text-white font-extrabold tracking-tight"
+                      style={{ backgroundColor: '#1a3050' }}
                     >
-                      {isGenerating ? <Loader2 className="h-5 w-5 animate-spin text-purple-500" /> : <Sparkles className="h-5 w-5 text-purple-500 group-hover:scale-110 transition-transform" />}
-                      <span className="text-sm font-extrabold tracking-tight">{isGenerating ? "Üretiliyor..." : "Canvas ile Afiş Üret"}</span>
+                      {isGenerating ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Sparkles className="h-5 w-5 group-hover:scale-110 transition-transform text-white" />}
+                      <span>{isGenerating ? "Üretiliyor..." : "Afiş Üret"}</span>
                     </button>
                   </div>
                 </div>
@@ -1198,7 +1919,7 @@ export default function OrganizerDashboard() {
                     className="px-6 py-2.5 text-sm font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Talebi SKS'ye Gönder
+                    {editingEventId ? "Başvuruyu Güncelle" : "Talebi SKS'ye Gönder"}
                   </button>
                 </div>
               </form>
@@ -1284,7 +2005,7 @@ export default function OrganizerDashboard() {
                   <div>
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Tarih / Saat</h4>
                     <p className="font-semibold text-slate-800">
-                      {viewEvent.date ? new Date(viewEvent.date).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}
+                      {viewEvent.date ? formatEventDate(viewEvent.date, viewEvent.end_time) : "-"}
                     </p>
                   </div>
                   <div>
@@ -1344,11 +2065,11 @@ export default function OrganizerDashboard() {
             </div>
             
             <div className="p-6 bg-slate-100 flex flex-col items-center justify-center">
-              <div className="relative rounded-xl overflow-hidden shadow-lg border border-slate-200 w-full max-w-[320px] aspect-[3/4] bg-white">
+              <div className="relative rounded-xl overflow-hidden shadow-lg border border-slate-200 w-full max-w-[320px] aspect-[4/5] bg-white">
                 {aiPreview.url && (
                   <img 
                     src={aiPreview.url} 
-                    alt="AI Generated Poster" 
+                    alt="Üretilen Afiş Önizlemesi" 
                     className="w-full h-full object-cover"
                   />
                 )}
@@ -1548,6 +2269,786 @@ export default function OrganizerDashboard() {
                 Kapat
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Yapay Zeka Açıklama Sihirbazı */}
+      {aiInfoModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 transform transition-all border border-gray-100 flex flex-col relative">
+
+            {/* ─── LOADING OVERLAY ─── */}
+            {aiLoading && (
+              <div className="absolute inset-0 bg-[#0b1329]/98 rounded-3xl z-[80] flex flex-col items-center justify-center p-6 text-white overflow-hidden select-none">
+                <style>{`
+                  @keyframes float-particle-loading {
+                    0%, 100% { transform: translateY(0) scale(0.8); opacity: 0.3; }
+                    50% { transform: translateY(-15px) scale(1.2); opacity: 0.8; }
+                  }
+                  @keyframes pulse-ring {
+                    0% { transform: scale(0.95); opacity: 0.5; }
+                    50% { transform: scale(1.05); opacity: 0.8; }
+                    100% { transform: scale(0.95); opacity: 0.5; }
+                  }
+                  @keyframes star-spin {
+                    0% { transform: rotate(0deg) scale(1); }
+                    50% { transform: rotate(180deg) scale(1.1); }
+                    100% { transform: rotate(360deg) scale(1); }
+                  }
+                  @keyframes text-shine {
+                    0%, 100% { opacity: 0.6; }
+                    50% { opacity: 1; }
+                  }
+                `}</style>
+                <button
+                  onClick={handleCancelAiGeneration}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white transition-all cursor-pointer bg-slate-800/80 hover:bg-slate-700 rounded-full p-2 border border-slate-700/50 hover:scale-105 active:scale-95"
+                  title="Yazmayı Durdur"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="relative flex items-center justify-center w-32 h-32 mb-8">
+                  {/* Glowing background rings */}
+                  <div className="absolute inset-0 bg-blue-500/10 rounded-full animate-ping" style={{ animationDuration: '3s' }}></div>
+                  <div className="absolute w-24 h-24 bg-indigo-500/20 rounded-full" style={{ animation: 'pulse-ring 2s infinite ease-in-out' }}></div>
+                  <div className="absolute w-20 h-20 rounded-full border border-dashed border-slate-700 animate-spin" style={{ animationDuration: '12s' }}></div>
+                  
+                  {/* Floating multi-colored particles */}
+                  <div className="absolute top-2 left-4 w-2 h-2 bg-yellow-300 rounded-full" style={{ animation: 'float-particle-loading 2.2s infinite ease-in-out' }}></div>
+                  <div className="absolute bottom-4 right-6 w-2.5 h-2.5 bg-blue-400 rounded-full" style={{ animation: 'float-particle-loading 1.8s infinite ease-in-out', animationDelay: '0.4s' }}></div>
+                  <div className="absolute top-8 right-2 w-1.5 h-1.5 bg-purple-400 rounded-full" style={{ animation: 'float-particle-loading 2.5s infinite ease-in-out', animationDelay: '0.9s' }}></div>
+                  <div className="absolute bottom-6 left-8 w-2 h-2 bg-pink-400 rounded-full" style={{ animation: 'float-particle-loading 2s infinite ease-in-out', animationDelay: '1.3s' }}></div>
+
+                  {/* Central Star Card */}
+                  <div className="relative h-16 w-16 bg-gradient-to-tr from-[#1a3050] to-indigo-950 rounded-2xl flex items-center justify-center shadow-2xl border border-indigo-500/30 hover:shadow-indigo-500/20 transition-all duration-300">
+                    <Sparkles 
+                      className="h-8 w-8 text-yellow-300" 
+                      style={{ animation: 'star-spin 4s infinite linear' }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 text-center max-w-[300px]">
+                  <h4 className="text-base font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-indigo-200 to-purple-300" style={{ animation: 'text-shine 2s infinite ease-in-out' }}>
+                    Yapay Zeka Sihirbazı Yazıyor
+                  </h4>
+                  <p className="text-xs text-slate-400">Etkinliğinize özel açıklama metni hazırlanıyor...</p>
+                </div>
+                <button
+                  onClick={handleCancelAiGeneration}
+                  className="mt-8 px-6 py-2.5 text-xs font-bold text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 bg-slate-900/90 hover:bg-slate-800 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg flex items-center gap-2"
+                >
+                  <X className="h-3 w-3" />
+                  Yazmayı İptal Et
+                </button>
+              </div>
+            )}
+
+            {/* ─── BUSY (YOĞUNLUK) ERROR OVERLAY ─── */}
+            {!aiLoading && aiErrorType === 'busy' && (
+              <div className="absolute inset-0 bg-[#1c130c]/98 rounded-3xl z-[80] flex flex-col items-center justify-center p-6 text-white overflow-hidden select-none">
+                <style>{`
+                  @keyframes clock-hand-spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                  @keyframes ripple-amber-effect {
+                    0% { transform: scale(0.95); opacity: 0.8; }
+                    50% { transform: scale(1.1); opacity: 0.3; }
+                    100% { transform: scale(1.25); opacity: 0; }
+                  }
+                  @keyframes float-particle-amber {
+                    0%, 100% { transform: translateY(0) scale(0.8); opacity: 0.2; }
+                    50% { transform: translateY(-12px) scale(1.1); opacity: 0.7; }
+                  }
+                `}</style>
+                <button
+                  onClick={() => { setAiErrorType(''); setAiError(''); }}
+                  className="absolute top-4 right-4 text-amber-400 hover:text-white transition-all cursor-pointer bg-amber-900/80 hover:bg-amber-800 rounded-full p-2 border border-amber-700/50 hover:scale-105 active:scale-95"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="relative w-28 h-28 flex items-center justify-center mb-6">
+                  {/* Glowing background waves */}
+                  <div className="absolute inset-0 bg-amber-500/10 rounded-full animate-pulse"></div>
+                  <div className="absolute w-20 h-20 rounded-full border-2 border-amber-500/20" style={{ animation: 'ripple-amber-effect 2.5s infinite ease-out' }}></div>
+                  <div className="absolute w-20 h-20 rounded-full border border-amber-500/30" style={{ animation: 'ripple-amber-effect 2.5s infinite ease-out', animationDelay: '1.25s' }}></div>
+                  
+                  {/* Floating amber particles */}
+                  <div className="absolute top-4 left-6 w-2 h-2 bg-amber-400 rounded-full" style={{ animation: 'float-particle-amber 2s infinite ease-in-out' }}></div>
+                  <div className="absolute bottom-4 right-6 w-1.5 h-1.5 bg-orange-400 rounded-full" style={{ animation: 'float-particle-amber 2.4s infinite ease-in-out', animationDelay: '0.6s' }}></div>
+                  <div className="absolute top-10 right-4 w-2.5 h-2.5 bg-yellow-500 rounded-full" style={{ animation: 'float-particle-amber 1.8s infinite ease-in-out', animationDelay: '1.2s' }}></div>
+
+                  {/* Central Animated Clock Container */}
+                  <div className="relative w-16 h-16 bg-gradient-to-tr from-amber-950 to-orange-950 rounded-2xl flex items-center justify-center border border-amber-500/30 shadow-2xl hover:scale-105 transition-transform duration-300">
+                    <Clock className="h-8 w-8 text-amber-400 animate-pulse" />
+                    {/* Simulated spinning hands */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-1 h-3 bg-amber-300 rounded-full origin-bottom -translate-y-1.5" style={{ animation: 'clock-hand-spin 4s infinite linear' }}></div>
+                      <div className="w-1.5 h-2 bg-amber-400 rounded-full origin-bottom -translate-y-1" style={{ animation: 'clock-hand-spin 24s infinite linear' }}></div>
+                    </div>
+                  </div>
+                </div>
+                <h4 className="text-base font-extrabold text-amber-200 mb-2 text-center tracking-wide">Şu An Biraz Yoğunuz</h4>
+                <p className="text-xs text-amber-300/80 text-center max-w-[280px] leading-relaxed mb-2">
+                  Yapay zeka sihirbazımıza şu an çok fazla istek geliyor. Birkaç saniye bekleyip tekrar deneyebilirsiniz.
+                </p>
+                <button
+                  onClick={() => { setAiErrorType(''); setAiError(''); generateDescriptionWithGemini(); }}
+                  className="mt-6 px-6 py-2.5 text-sm font-bold text-amber-950 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] cursor-pointer"
+                >
+                  Tekrar Dene
+                </button>
+              </div>
+            )}
+
+            {/* ─── GENERIC ERROR OVERLAY ─── */}
+            {!aiLoading && aiErrorType === 'error' && (
+              <div className="absolute inset-0 bg-[#210c0e]/98 rounded-3xl z-[80] flex flex-col items-center justify-center p-6 text-white overflow-hidden select-none">
+                <style>{`
+                  @keyframes error-shake {
+                    0%, 100% { transform: rotate(0deg) scale(1); }
+                    20%, 60% { transform: rotate(-5deg) scale(1.05); }
+                    40%, 80% { transform: rotate(5deg) scale(1.05); }
+                  }
+                  @keyframes ripple-rose-effect {
+                    0% { transform: scale(0.95); opacity: 0.8; }
+                    50% { transform: scale(1.1); opacity: 0.3; }
+                    100% { transform: scale(1.25); opacity: 0; }
+                  }
+                  @keyframes float-particle-rose {
+                    0%, 100% { transform: translateY(0) scale(0.8); opacity: 0.2; }
+                    50% { transform: translateY(-12px) scale(1.1); opacity: 0.7; }
+                  }
+                `}</style>
+                <button
+                  onClick={() => { setAiErrorType(''); setAiError(''); }}
+                  className="absolute top-4 right-4 text-rose-400 hover:text-white transition-all cursor-pointer bg-rose-900/80 hover:bg-rose-800 rounded-full p-2 border border-rose-700/50 hover:scale-105 active:scale-95"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="relative w-28 h-28 flex items-center justify-center mb-6">
+                  {/* Glowing background waves */}
+                  <div className="absolute inset-0 bg-rose-500/10 rounded-full animate-pulse"></div>
+                  <div className="absolute w-20 h-20 rounded-full border-2 border-rose-500/20" style={{ animation: 'ripple-rose-effect 2.5s infinite ease-out' }}></div>
+                  <div className="absolute w-20 h-20 rounded-full border border-rose-500/30" style={{ animation: 'ripple-rose-effect 2.5s infinite ease-out', animationDelay: '1.25s' }}></div>
+                  
+                  {/* Floating rose particles */}
+                  <div className="absolute top-4 left-6 w-2 h-2 bg-rose-400 rounded-full" style={{ animation: 'float-particle-rose 2s infinite ease-in-out' }}></div>
+                  <div className="absolute bottom-4 right-6 w-1.5 h-1.5 bg-red-400 rounded-full" style={{ animation: 'float-particle-rose 2.4s infinite ease-in-out', animationDelay: '0.6s' }}></div>
+                  <div className="absolute top-10 right-4 w-2.5 h-2.5 bg-pink-500 rounded-full" style={{ animation: 'float-particle-rose 1.8s infinite ease-in-out', animationDelay: '1.2s' }}></div>
+
+                  {/* Central Animated Alert Container */}
+                  <div 
+                    className="relative w-16 h-16 bg-gradient-to-tr from-rose-950 to-red-950 rounded-2xl flex items-center justify-center border border-rose-500/30 shadow-2xl cursor-pointer"
+                    style={{ animation: 'error-shake 3s infinite ease-in-out' }}
+                  >
+                    <AlertTriangle className="h-8 w-8 text-rose-400 animate-pulse" />
+                  </div>
+                </div>
+                <h4 className="text-base font-extrabold text-rose-200 mb-2 text-center tracking-wide">Küçük Bir Sorun Oluştu</h4>
+                <p className="text-xs text-rose-300/80 text-center max-w-[280px] leading-relaxed mb-2">
+                  Açıklama oluşturulurken beklenmedik bir sorun yaşandı. Lütfen tekrar deneyin.
+                </p>
+                <button
+                  onClick={() => { setAiErrorType(''); setAiError(''); generateDescriptionWithGemini(); }}
+                  className="mt-6 px-6 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(225,29,72,0.25)] hover:shadow-[0_0_20px_rgba(225,29,72,0.4)] cursor-pointer"
+                >
+                  Tekrar Dene
+                </button>
+              </div>
+            )}
+
+            <button 
+              onClick={() => { setAiInfoModalOpen(false); setAiResult(""); setAiError(""); setAiErrorType(""); }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition cursor-pointer bg-slate-100 rounded-full p-1.5 hover:bg-slate-200 z-10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#f0f4f8', color: '#1a3050' }}>
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">AI Açıklama Sihirbazı</h3>
+                <p className="text-xs text-slate-500">Etkinlik detaylarınızı yapay zeka ile canlandırın</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Etkinlik Başlığı</span>
+                  <span className="text-sm font-semibold text-slate-700 truncate block">{newEvent.title || 'Belirtilmedi'}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Kategori</span>
+                  <span className="text-sm font-semibold text-slate-700 truncate block">{newEvent.category || 'Belirtilmedi'}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Eklemek İstediğiniz Detaylar (Opsiyonel)</label>
+                <textarea 
+                  value={aiKeywords} onChange={(e) => setAiKeywords(e.target.value)}
+                  placeholder="Örn: Pizza ikramı var, katılım belgesi verilecek, kontenjan sınırlı..."
+                  className="w-full text-sm px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none h-20"
+                ></textarea>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Yazım Dili / Tonlama</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => setAiTone('friendly')} className={`py-2 text-xs font-semibold rounded-lg border transition cursor-pointer ${aiTone === 'friendly' ? 'text-white border-transparent shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`} style={aiTone === 'friendly' ? { backgroundColor: '#1a3050' } : {}}>Eğlenceli</button>
+                  <button onClick={() => setAiTone('academic')} className={`py-2 text-xs font-semibold rounded-lg border transition cursor-pointer ${aiTone === 'academic' ? 'text-white border-transparent shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`} style={aiTone === 'academic' ? { backgroundColor: '#1a3050' } : {}}>Akademik</button>
+                  <button onClick={() => setAiTone('exciting')} className={`py-2 text-xs font-semibold rounded-lg border transition cursor-pointer ${aiTone === 'exciting' ? 'text-white border-transparent shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`} style={aiTone === 'exciting' ? { backgroundColor: '#1a3050' } : {}}>Heyecanlı</button>
+                </div>
+              </div>
+
+              {aiResult ? (
+                <div className="mt-2 flex flex-col gap-3">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl max-h-48 overflow-y-auto text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
+                    {aiResult}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={generateDescriptionWithGemini} disabled={aiLoading} className="flex-1 py-2.5 border border-slate-200 bg-white text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                      Yeniden Üret
+                    </button>
+                    <button onClick={() => { setNewEvent({...newEvent, description: aiResult}); setAiInfoModalOpen(false); setAiResult(""); }} className="flex-1 py-2.5 text-white text-sm font-bold rounded-xl transition shadow-md cursor-pointer hover:opacity-90" style={{ backgroundColor: '#1a3050' }}>
+                      Açıklamayı Kullan
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={generateDescriptionWithGemini}
+                  disabled={aiLoading}
+                  className="w-full mt-2 py-3 bg-navy-800 hover:bg-navy-700 text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60" style={{backgroundColor: aiLoading ? '#1e3a5f' : '#1a3050'}}
+                >
+                  {aiLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Üretiliyor...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" /> Açıklama Üret
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AFİŞ TASARIM SİHİRBAZI MODALI */}
+      {isWizardOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col transform transition-all border border-gray-100 my-8">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-150 flex items-center justify-between bg-slate-50 shrink-0">
+              <h3 className="text-lg font-bold text-slate-950 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 animate-pulse" style={{ color: '#1a3050' }} />
+                Afiş Tasarım Sihirbazı
+              </h3>
+              <button 
+                onClick={() => setIsWizardOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition cursor-pointer bg-white rounded-full p-1 hover:bg-gray-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[70vh] flex flex-col gap-6">
+              
+              {/* Adım 1: Şablon Yerleşimi */}
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">ADIM 1: ŞABLON DÜZENİ SEÇİN</label>
+                <div className="grid grid-cols-3 gap-3">
+                  
+                  {/* Klasik Modern */}
+                  <button
+                    type="button"
+                    onClick={() => setPosterTemplate("classic")}
+                    className={`flex flex-col items-center p-3 rounded-2xl border-2 transition text-left cursor-pointer group hover:border-slate-400 ${
+                      posterTemplate === "classic" ? "border-slate-900 bg-slate-50/50 shadow-sm" : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    {/* Mock Layout Preview */}
+                    <div className="w-full aspect-[4/5] rounded-xl bg-slate-950 p-2.5 flex flex-col justify-between mb-2 shadow-inner border border-slate-800 relative overflow-hidden">
+                      {/* Top Header */}
+                      <div className="flex justify-between items-start">
+                        {/* Text lines left */}
+                        <div className="space-y-1 w-1/2">
+                          <div className="h-1.5 bg-slate-800 rounded w-full"></div>
+                          <div className="h-1 bg-slate-900 rounded w-3/4"></div>
+                        </div>
+                        {/* Logos right */}
+                        <div className="flex gap-0.5">
+                          <div className="w-4 h-4 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                          <div className="w-4 h-4 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Main Title Center */}
+                      <div className="space-y-1.5 my-auto">
+                        <div className="h-3 bg-slate-805 rounded w-4/5 mx-auto"></div>
+                        <div className="h-2 bg-slate-805 rounded w-11/12 mx-auto"></div>
+                      </div>
+
+                      {/* Footer Info */}
+                      <div className="space-y-1 mt-auto">
+                        <div className="h-1 bg-slate-800 rounded w-1/2"></div>
+                        <div className="h-1 bg-slate-800 rounded w-2/3"></div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Klasik Modern</span>
+                    <span className="text-[9px] text-slate-450 mt-0.5">Logolar sağ üst köşede</span>
+                  </button>
+
+                  {/* Dengeli Merkez */}
+                  <button
+                    type="button"
+                    onClick={() => setPosterTemplate("centered")}
+                    className={`flex flex-col items-center p-3 rounded-2xl border-2 transition text-left cursor-pointer group hover:border-slate-400 ${
+                      posterTemplate === "centered" ? "border-slate-900 bg-slate-50/50 shadow-sm" : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    {/* Mock Layout Preview */}
+                    <div className="w-full aspect-[4/5] rounded-xl bg-slate-950 p-2.5 flex flex-col justify-between mb-2 shadow-inner border border-slate-800 relative overflow-hidden">
+                      {/* Top Header */}
+                      <div className="flex items-center justify-center gap-1.5 mt-1">
+                        <div className="w-3.5 h-3.5 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                        <div className="h-2 bg-slate-850 rounded w-16"></div>
+                        <div className="w-3.5 h-3.5 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                      </div>
+                      
+                      {/* Main Title Center */}
+                      <div className="space-y-1.5 my-auto">
+                        <div className="h-3 bg-slate-800 rounded w-4/5 mx-auto"></div>
+                        <div className="h-2 bg-slate-800 rounded w-11/12 mx-auto"></div>
+                      </div>
+
+                      {/* Footer Info */}
+                      <div className="space-y-1 mt-auto">
+                        <div className="h-1 bg-slate-800 rounded w-1/2"></div>
+                        <div className="h-1 bg-slate-800 rounded w-2/3"></div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Dengeli Merkez</span>
+                    <span className="text-[9px] text-slate-450 mt-0.5">Logolar başlıklara hizalı</span>
+                  </button>
+
+                  {/* Minimal Elit */}
+                  <button
+                    type="button"
+                    onClick={() => setPosterTemplate("minimal")}
+                    className={`flex flex-col items-center p-3 rounded-2xl border-2 transition text-left cursor-pointer group hover:border-slate-400 ${
+                      posterTemplate === "minimal" ? "border-slate-900 bg-slate-50/50 shadow-sm" : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    {/* Mock Layout Preview */}
+                    <div className="w-full aspect-[4/5] rounded-xl bg-slate-950 p-2.5 flex flex-col justify-between mb-2 shadow-inner border border-slate-800 relative overflow-hidden">
+                      {/* Outer Border Frame */}
+                      <div className="absolute inset-1 border border-dashed border-slate-700/60 rounded-lg pointer-events-none"></div>
+                      
+                      {/* Top Header Logos Overlapping */}
+                      <div className="flex justify-center -space-x-1 mt-2.5">
+                        <div className="w-4 h-4 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                        <div className="w-4 h-4 rounded-full border border-dashed border-slate-700 bg-slate-900"></div>
+                      </div>
+                      
+                      {/* Main Title Center */}
+                      <div className="space-y-1.5 my-auto">
+                        <div className="h-3 bg-slate-850 rounded w-3/4 mx-auto"></div>
+                        <div className="h-2 bg-slate-850 rounded w-2/3 mx-auto"></div>
+                      </div>
+
+                      {/* Footer Info */}
+                      <div className="space-y-1 mt-auto">
+                        <div className="h-1 bg-slate-850 rounded w-1/2 mx-auto"></div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Minimal Elit</span>
+                    <span className="text-[9px] text-slate-450 mt-0.5">Üst üste binen logolar & çerçeve</span>
+                  </button>
+
+                </div>
+              </div>
+
+              {/* Adım 2: Arka Plan Tipi Seçimi */}
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">ADIM 2: ARKA PLAN TÜRÜ</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "preset_gradient", label: "Hazır Renkler" },
+                    { id: "custom_gradient", label: "Özel Renk Tasarla" },
+                    { id: "image", label: "Görsel Arka Plan" }
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setPosterBgType(t.id)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border-2 transition text-center cursor-pointer ${
+                        posterBgType === t.id 
+                          ? "bg-slate-950 border-slate-950 text-white shadow-sm"
+                          : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Adım 3: Arka Plan Detayları */}
+              <div>
+                {posterBgType === "preset_gradient" && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">ADIM 3: HAZIR RENK TEMASI SEÇİN</label>
+                    <div className="space-y-4">
+                      {/* Karanlık Temalar */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Karanlık Temalar</span>
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2.5">
+                          {POSTER_PALETTES.map((pal, idx) => {
+                            if (pal.isLight) return null;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                title={pal.name}
+                                onClick={() => setPosterPaletteIndex(idx)}
+                                className={`aspect-square rounded-2xl border-2 transition relative flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
+                                  posterPaletteIndex === idx ? "border-slate-950 scale-105 ring-2 ring-slate-900/25 shadow-md" : "border-slate-100"
+                                }`}
+                                style={{
+                                  background: `linear-gradient(135deg, ${pal.bg[0]} 0%, ${pal.bg[pal.bg.length - 1]} 100%)`
+                                }}
+                              >
+                                {posterPaletteIndex === idx && (
+                                  <Check className="h-5 w-5 text-white" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Aydınlık Temalar */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Aydınlık Temalar</span>
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2.5">
+                          {POSTER_PALETTES.map((pal, idx) => {
+                            if (!pal.isLight) return null;
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                title={pal.name}
+                                onClick={() => setPosterPaletteIndex(idx)}
+                                className={`aspect-square rounded-2xl border-2 transition relative flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
+                                  posterPaletteIndex === idx ? "border-slate-950 scale-105 ring-2 ring-slate-900/25 shadow-md" : "border-slate-100"
+                                }`}
+                                style={{
+                                  background: `linear-gradient(135deg, ${pal.bg[0]} 0%, ${pal.bg[pal.bg.length - 1]} 100%)`
+                                }}
+                              >
+                                {posterPaletteIndex === idx && (
+                                  <Check className="h-5 w-5" style={{ color: pal.text }} />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {posterBgType === "custom_gradient" && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">ADIM 3: ÖZEL RENK DÜZENİNİ TASARLAYIN</label>
+                    <div className="flex gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-150">
+                      <div className="flex-1 flex flex-col items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-500">Giriş Rengi</span>
+                        <input 
+                          type="color" 
+                          value={customColors[0] || "#6366f1"} 
+                          onChange={(e) => {
+                            const next = [...customColors];
+                            next[0] = e.target.value;
+                            setCustomColors(next);
+                          }}
+                          className="w-12 h-10 rounded-xl border border-slate-200 cursor-pointer p-0 bg-transparent"
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-500">Geçiş Rengi</span>
+                        <input 
+                          type="color" 
+                          value={customColors[1] || "#a855f7"} 
+                          onChange={(e) => {
+                            const next = [...customColors];
+                            next[1] = e.target.value;
+                            setCustomColors(next);
+                          }}
+                          className="w-12 h-10 rounded-xl border border-slate-200 cursor-pointer p-0 bg-transparent"
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-500">Çıkış Rengi</span>
+                        <input 
+                          type="color" 
+                          value={customColors[2] || "#3b82f6"} 
+                          onChange={(e) => {
+                            const next = [...customColors];
+                            next[2] = e.target.value;
+                            setCustomColors(next);
+                          }}
+                          className="w-12 h-10 rounded-xl border border-slate-200 cursor-pointer p-0 bg-transparent"
+                        />
+                      </div>
+                      <div className="w-16 h-16 rounded-2xl border border-slate-200 shadow-md shrink-0 transition"
+                        style={{
+                          background: `linear-gradient(135deg, ${customColors[0]} 0%, ${customColors[1]} 50%, ${customColors[2]} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {/* Popüler Karanlık Gradyanlar */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Popüler Karanlık Gradyanlar (8 Adet)</span>
+                        <div className="grid grid-cols-8 gap-2">
+                          {POPULAR_DARK_GRADIENTS.map((grad, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              title={grad.name}
+                              onClick={() => setCustomColors(grad.colors)}
+                              className="aspect-square rounded-xl border border-slate-200 transition hover:scale-105 active:scale-95 shadow-sm flex items-center justify-center cursor-pointer"
+                              style={{
+                                background: `linear-gradient(135deg, ${grad.colors[0]} 0%, ${grad.colors[1]} 50%, ${grad.colors[2]} 100%)`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Popüler Aydınlık Gradyanlar */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Popüler Aydınlık Gradyanlar (8 Adet)</span>
+                        <div className="grid grid-cols-8 gap-2">
+                          {POPULAR_LIGHT_GRADIENTS.map((grad, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              title={grad.name}
+                              onClick={() => setCustomColors(grad.colors)}
+                              className="aspect-square rounded-xl border border-slate-200 transition hover:scale-105 active:scale-95 shadow-sm flex items-center justify-center cursor-pointer"
+                              style={{
+                                background: `linear-gradient(135deg, ${grad.colors[0]} 0%, ${grad.colors[1]} 50%, ${grad.colors[2]} 100%)`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {posterBgType === "image" && (
+                  <div className="space-y-4">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">ADIM 3: GÖRSEL ARKA PLAN ARAMA</label>
+                    
+                    {/* Arama Çubuğu */}
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={posterBgQuery}
+                          onChange={(e) => setPosterBgQuery(e.target.value)}
+                          placeholder="Aranacak görsel anahtar kelimeleri (Örn: satranç, kütüphane)..."
+                          className="w-full pl-4 pr-10 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              setPosterBgImageSig(Math.random().toString());
+                              setPosterBgImageLoading(true);
+                            }
+                          }}
+                        />
+                        {posterBgQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setPosterBgQuery("")}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 text-xs font-bold"
+                          >
+                            Temizle
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPosterBgImageSig(Math.random().toString());
+                          setPosterBgImageLoading(true);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-sm cursor-pointer shrink-0"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${posterBgImageLoading ? 'animate-spin' : ''}`} />
+                        Ara / Yenile
+                      </button>
+                    </div>
+
+                    {/* Hızlı Öneriler */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Hızlı Öneri Kategorileri</span>
+                      <div className="grid grid-cols-6 gap-1 w-full">
+                        {[
+                          { label: "Seminer", query: "seminar,conference", icon: GraduationCap },
+                          { label: "Konser", query: "concert,music", icon: Music },
+                          { label: "Sergi", query: "art,exhibition", icon: Palette },
+                          { label: "Spor", query: "sports,stadium", icon: Trophy },
+                          { label: "Teknoloji", query: "technology,digital", icon: Cpu },
+                          { label: "Doğa", query: "nature,landscape", icon: Leaf }
+                        ].map((tag) => {
+                          const IconComponent = tag.icon;
+                          return (
+                            <button
+                              key={tag.query}
+                              type="button"
+                              onClick={() => {
+                                setPosterBgQuery(tag.query);
+                                setPosterBgImageSig(Math.random().toString());
+                                setPosterBgImageLoading(true);
+                              }}
+                              className={`flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold border transition cursor-pointer truncate ${
+                                posterBgQuery === tag.query
+                                  ? "text-white border-transparent shadow-sm"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                              style={posterBgQuery === tag.query ? { backgroundColor: '#1a3050' } : {}}
+                            >
+                              <IconComponent className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{tag.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Görsel Katman Filtresi (Açık/Koyu) */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Görsel Katman Filtresi (Overlay)</span>
+                      <div className="flex gap-2.5">
+                        {[
+                          { id: "dark", label: "Koyu Katman (Beyaz Yazı)" },
+                          { id: "light", label: "Açık Katman (Siyah Yazı)" }
+                        ].map((o) => (
+                          <button
+                            key={o.id}
+                            type="button"
+                            onClick={() => setPosterImageOverlay(o.id)}
+                            className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border-2 transition text-center cursor-pointer ${
+                              posterImageOverlay === o.id
+                                ? "bg-slate-950 border-slate-950 text-white shadow-sm"
+                                : "bg-white border-slate-200 text-slate-655 hover:bg-slate-50"
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Canlı Görsel Önizleme */}
+                    <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 flex flex-col items-center justify-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider self-start">Görsel Önizleme</span>
+                      <div className="w-full max-w-[200px] aspect-[4/5] bg-white border border-slate-200 rounded-xl overflow-hidden relative shadow-inner">
+                        {posterBgImageLoading && (
+                          <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center z-10">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <Loader2 className="h-6 w-6 animate-spin text-slate-800" />
+                              <span className="text-[10px] font-bold text-slate-600">Görsel Yükleniyor...</span>
+                            </div>
+                          </div>
+                        )}
+                        <img
+                          src={`https://loremflickr.com/1080/1350/${encodeURIComponent('abstract,' + (posterBgQuery || 'texture'))}?lock=${Math.floor(Number(posterBgImageSig) * 100000)}`}
+                          alt="Arka Plan Önizlemesi"
+                          className="w-full h-full object-cover"
+                          onLoad={() => setPosterBgImageLoading(false)}
+                          onError={() => setPosterBgImageLoading(false)}
+                          crossOrigin="anonymous"
+                        />
+                      </div>
+                      <span className="text-[10px] font-medium text-slate-500 text-center">
+                        Görsel: Fotoğraf / {posterBgQuery || "Rastgele"} (1080x1350)
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Adım 4: Desen Seçimi */}
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">ADIM 4: ARKA PLAN GEOMETRİK DESENİ SEÇİN</label>
+                <div className="grid grid-cols-9 gap-1 w-full">
+                  {[
+                    { id: "circles_lines", name: "Daire" },
+                    { id: "grid", name: "Izgara" },
+                    { id: "triangles", name: "Üçgen" },
+                    { id: "stripes", name: "Çizgi" },
+                    { id: "dots", name: "Nokta" },
+                    { id: "waves", name: "Dalga" },
+                    { id: "diamonds", name: "Baklava" },
+                    { id: "hexagons", name: "Altıgen" },
+                    { id: "none", name: "Sade" }
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPosterPattern(p.id)}
+                      className={`w-full flex items-center justify-center py-2 px-0.5 text-[9px] sm:text-[10px] font-bold rounded-lg border transition text-center truncate ${
+                        posterPattern === p.id 
+                          ? "bg-slate-950 border-slate-950 text-white shadow-sm"
+                          : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-gray-150 flex justify-end gap-3 shrink-0">
+              <button 
+                type="button"
+                onClick={() => setIsWizardOpen(false)}
+                className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                İptal
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsWizardOpen(false);
+                  handleAIImageGenerate();
+                }}
+                disabled={isGenerating || isUploading}
+                className="px-6 py-2.5 text-sm font-extrabold bg-slate-950 text-white rounded-xl hover:bg-slate-800 transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-slate-200" />}
+                Tasarımı Oluştur
+              </button>
+            </div>
+
           </div>
         </div>
       )}
