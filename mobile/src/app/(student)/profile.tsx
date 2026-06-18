@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, TextInput, Alert, Image, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Mail, School, Shield, Bookmark, CheckCircle, Clock, XCircle, LogOut, MapPin, Calendar as CalendarIcon, Edit3, Trash2, Plus, ArrowLeft, UploadCloud, Users, BadgeCheck, Camera, Image as ImageIcon, AlertCircle, Sun, Moon, Monitor, ChevronDown } from 'lucide-react-native';
+import { User, Mail, School, Shield, Bookmark, CheckCircle, Clock, XCircle, LogOut, MapPin, Calendar as CalendarIcon, Edit3, Trash2, Plus, ArrowLeft, UploadCloud, Users, BadgeCheck, Camera, Image as ImageIcon, AlertCircle, Sun, Moon, Monitor, ChevronDown, BookOpen, GraduationCap, Hash } from 'lucide-react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { EventCard } from '@/components/ui/EventCard';
@@ -395,6 +395,30 @@ export default function ProfileScreen() {
           <School size={16} color="#94a3b8" />
           <ThemedText style={styles.infoText}>{uniName || 'Yükleniyor...'}</ThemedText>
         </View>
+        {profile?.role === 'student' && (
+          <>
+            {(profile.faculty || profile.department) && (
+              <View style={styles.infoRow}>
+                <BookOpen size={16} color="#94a3b8" />
+                <ThemedText style={styles.infoText}>
+                  {profile.faculty || '-'} / {profile.department || '-'}
+                </ThemedText>
+              </View>
+            )}
+            {profile.class_level && (
+              <View style={styles.infoRow}>
+                <GraduationCap size={16} color="#94a3b8" />
+                <ThemedText style={styles.infoText}>{profile.class_level}. Sınıf</ThemedText>
+              </View>
+            )}
+            {profile.student_number && (
+              <View style={styles.infoRow}>
+                <Hash size={16} color="#94a3b8" />
+                <ThemedText style={styles.infoText}>Öğrenci No: {profile.student_number}</ThemedText>
+              </View>
+            )}
+          </>
+        )}
       </View>
 
       <View style={styles.settingsSection}>
